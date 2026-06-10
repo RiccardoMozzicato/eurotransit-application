@@ -2,7 +2,11 @@ spring:
   application:
     name: notifications
   kafka:
+    # ${VAR:default} = env var if set (in-cluster), localhost fallback for local dev.
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    # Consumer-only service: it reacts to order-confirmed / notification-requested.
+    # Manual ack (at-least-once): a duplicate notification e-mail is an acceptable
+    # failure mode — a LOST confirmation is not.
     consumer:
       group-id: notifications
       auto-offset-reset: earliest

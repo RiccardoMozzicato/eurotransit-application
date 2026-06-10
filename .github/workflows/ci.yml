@@ -23,6 +23,9 @@ jobs:
   detect-changes:
     name: Detect changed services
     runs-on: ubuntu-latest
+    # Job-level `outputs`: the ONLY way to pass data between jobs (each job runs on a
+    # fresh runner). Downstream jobs read them as `needs.detect-changes.outputs.<name>`.
+    # `${{ ... }}` is the Actions expression syntax, evaluated before the step runs.
     outputs:
       services: ${{ steps.changed.outputs.services }}
       short_sha: ${{ steps.sha.outputs.short }}
@@ -50,6 +53,9 @@ jobs:
         id: changed
         run: |
           # On manual dispatch, rebuild everything; otherwise use the changed services.
+          # `steps.filter.outputs.changes` (from dorny/paths-filter) is already a JSON
+          # array of the filter names that matched, e.g. ["orders","inventory"].
+          # Writing `name=value` to $GITHUB_OUTPUT is how a step exports an output.
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo 'services=["catalog","orders","inventory","payments","notifications"]' >> "$GITHUB_OUTPUT"
           else
@@ -63,7 +69,11 @@ jobs:
     if: needs.detect-changes.outputs.services != '[]'
     runs-on: ubuntu-latest
     strategy:
+      # fail-fast=false: one failing service does not cancel the sibling builds.
       fail-fast: false
+      # `matrix` spawns one PARALLEL copy of this job per list element; `fromJSON` turns
+      # the JSON-string output into a real list. Inside the job, `matrix.service` is the
+      # current service name.
       matrix:
         service: ${{ fromJSON(needs.detect-changes.outputs.services) }}
     steps:
@@ -111,6 +121,10 @@ jobs:
       - name: Checkout GitOps repo
         uses: actions/checkout@v4
         with:
+          # `vars.*` = repo-level configuration variables (plain text, Settings > Variables);
+          # `secrets.*` = encrypted secrets. The PAT only grants write on the CONFIG repo:
+          # this is the least-privilege bridge that lets CI change desired state without
+          # ever holding cluster credentials.
           repository: ${{ vars.GITOPS_REPO }}
           token: ${{ secrets.CONFIG_REPO_PAT }}
           path: gitops

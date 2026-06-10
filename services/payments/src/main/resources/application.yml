@@ -19,14 +19,19 @@ spring:
       hibernate:
         format_sql: true
   kafka:
+    # ${VAR:default} = env var if set (in-cluster), localhost fallback for local dev.
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
     producer:
+      # acks=all + idempotent producer: durable, duplicate-free publishing of
+      # payment-authorized events (see inventory/orders application.yml for details).
       acks: all
       properties:
         enable.idempotence: true
     consumer:
       group-id: payments
       auto-offset-reset: earliest
+      # Manual ack → at-least-once delivery → handlers must be idempotent (they are:
+      # the idempotency table is this service's core design constraint).
       enable-auto-commit: false
 
 server:
