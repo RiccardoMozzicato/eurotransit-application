@@ -1,0 +1,3 @@
+-- V1: baseline (intentionally empty).
+-- The real schema for this service lands here in Phase 1, together with its JPA entities.
+-- On the postgres profile Flyway owns the schema and Hibernate only validates (ddl-auto=validate).

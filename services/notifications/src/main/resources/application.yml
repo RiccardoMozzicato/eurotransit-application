@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: notifications
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    consumer:
+      group-id: notifications
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+
+server:
+  port: 8080
+
+# Notifications is fully asynchronous and stateless: readiness depends only on the app
+# itself (no DB, no downstream). It must be able to fail without failing checkout, so it
+# never appears on the synchronous critical path.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+      group:
+        readiness:
+          include: readinessState
+  health:
+    readinessstate:
+      enabled: true
+    livenessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces

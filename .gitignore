@@ -1,0 +1,7 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Per-service Gradle build artifacts are ignored by each service's own .gitignore

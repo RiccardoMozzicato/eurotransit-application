@@ -1,0 +1,137 @@
+name: CI - Build & Push images & Update GitOps configuration
+
+# Continues the Lab04 model, extended to the five EuroTransit services.
+# CI builds and tests each changed service, pushes an immutable image (tagged with the commit SHA) to ACR, then updates the desired image tags in the configuration repository.
+# CI NEVER talks to the cluster: Argo CD reconciles the Git change. No cluster credentials are ever present in this workflow.
+
+#TODO: Osservazione (non un bug): il job build esegue ./gradlew test e poi il docker build rifà gradlew build -x test → il codice si compila due volte (una in CI, una dentro l'immagine, senza cache condivisa). È il pattern del Lab, quindi lo teniamo per coerenza, ma sappi che è un costo. Se mai volessimo ottimizzare: buildare il jar in CI e fare solo COPY nel Dockerfile.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: lab02g03registry.azurecr.io
+  IMAGE_PREFIX: eurotransit
+
+permissions:
+  contents: read
+
+jobs:
+  # 1 — Detect which services changed; emit a JSON list to drive the build matrix
+  detect-changes:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.changed.outputs.services }}
+      short_sha: ${{ steps.sha.outputs.short }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Filter changed paths per service
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            catalog:       'services/catalog/**'
+            orders:        'services/orders/**'
+            inventory:     'services/inventory/**'
+            payments:      'services/payments/**'
+            notifications: 'services/notifications/**'
+
+      - name: Assemble changed-service list
+        id: changed
+        run: |
+          # On manual dispatch, rebuild everything; otherwise use the changed services.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo 'services=["catalog","orders","inventory","payments","notifications"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "services=${{ steps.filter.outputs.changes }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # 2 — Test, build and push one image per changed service (in parallel)
+  build:
+    name: Build & push ${{ matrix.service }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.detect-changes.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Test ${{ matrix.service }}
+        working-directory: services/${{ matrix.service }}
+        run: ./gradlew test --no-daemon --console=plain
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./services/${{ matrix.service }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ needs.detect-changes.outputs.short_sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  # 3 — GitOps update: bump the image tags of the built services in the configuration repo
+  update-gitops:
+    name: Update GitOps values
+    needs: [detect-changes, build]
+    if: needs.build.result == 'success' && needs.detect-changes.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitOps repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.GITOPS_REPO }}
+          token: ${{ secrets.CONFIG_REPO_PAT }}
+          path: gitops
+
+      - name: Bump image tags for built services
+        env:
+          SHA: ${{ needs.detect-changes.outputs.short_sha }}
+          SERVICES: ${{ needs.detect-changes.outputs.services }}
+        run: |
+          VALUES=gitops/deploy/charts/eurotransit/values.yaml
+          for s in $(echo "$SERVICES" | yq -p=json -o=tsv '.[]'); do
+            echo "bumping $s -> $SHA"
+            yq e ".services.${s}.image.tag = \"${SHA}\"" -i "$VALUES"
+          done
+
+      - name: Commit and push
+        run: |
+          cd gitops
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add deploy/charts/eurotransit/values.yaml
+          git diff --cached --quiet && exit 0
+          git commit -m "ci: bump image tags to ${{ needs.detect-changes.outputs.short_sha }}"
+          git push
