@@ -42,7 +42,7 @@ test-all:
 build service:
     cd services/{{service}} && ./gradlew build --no-daemon --console=plain
 
-# Run one service locally (H2 + default profile) [e.g. `just run catalog`]
+# Run one service locally (H2 + default profile) [e.g. "just run catalog"]
 run service:
     cd services/{{service}} && ./gradlew bootRun
 
