@@ -16,7 +16,7 @@ plugins {
 	kotlin("plugin.jpa") version "2.2.21"
 }
 
-group = "it.tonicminds"
+group = "it.g03"
 version = "0.0.1-SNAPSHOT"
 description = "EuroTransit Orders service — saga orchestrator of the money path (place → reserve → authorize → confirm)"
 

@@ -5,7 +5,7 @@
 # (e) exit on first failure, (u) unset vars are errors, (o pipefail) fail if any pipe stage fails
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
-# 5 cooperating services (directory names under services/)
+# Keep the service list in one place so every recipe stays aligned: 5 cooperating services (directory names under services/)
 services := "catalog orders inventory payments notifications"
 
 # TODO: cambiare in base al cluster usato
@@ -42,7 +42,7 @@ test-all:
 build service:
     cd services/{{service}} && ./gradlew build --no-daemon --console=plain
 
-# Run one service locally (H2 + default profile) [e.g. "just run catalog"]
+# Run one service locally (H2 + default profile) [e.g. "just run catalog"]; starts the service in the foreground using the local H2 config
 run service:
     cd services/{{service}} && ./gradlew bootRun
 
@@ -51,7 +51,7 @@ run service:
 # Container lifecycle (local) #
 ###############################
 
-# Build a container image locally for one service (linux/amd64 as in the labs)
+# Build a container image locally for one service (linux/amd64 as in the labs) Dockerfile performs a multi-stage build and packages the runnable jar
 image service tag="dev":
     docker build -t {{registry}}/{{image_prefix}}/{{service}}:{{tag}} --platform linux/amd64 ./services/{{service}}
 

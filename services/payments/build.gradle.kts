@@ -6,7 +6,7 @@ plugins {
 	kotlin("plugin.jpa") version "2.2.21"
 }
 
-group = "it.tonicminds"
+group = "it.g03"
 version = "0.0.1-SNAPSHOT"
 description = "EuroTransit Payments service — synchronous authorization with strict idempotency (no double-charge)"
 

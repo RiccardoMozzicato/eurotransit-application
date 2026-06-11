@@ -6,7 +6,7 @@ plugins {
 	kotlin("plugin.jpa") version "2.2.21"
 }
 
-group = "it.tonicminds"
+group = "it.g03"
 version = "0.0.1-SNAPSHOT"
 description = "EuroTransit Inventory service — the contended resource; atomic conditional reservation (never oversell)"
 

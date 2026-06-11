@@ -5,7 +5,7 @@ plugins {
 	id("io.spring.dependency-management") version "1.1.7"
 }
 
-group = "it.tonicminds"
+group = "it.g03"
 version = "0.0.1-SNAPSHOT"
 description = "EuroTransit Notifications service — fully asynchronous; must fail without failing checkout"
 

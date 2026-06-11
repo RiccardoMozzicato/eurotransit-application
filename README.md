@@ -9,11 +9,11 @@ This is the **application** half of the two-repository GitOps model. The **confi
 
 | Service | Package | Interaction style | Owns |
 |---|---|---|---|
-| `catalog` | `it.tonicminds.catalog` | Synchronous read API, tolerant of staleness | read store |
-| `orders` | `it.tonicminds.orders` | Synchronous entry (`POST /api/orders`) + async pipeline (coroutines/Flows) | orders DB + transactional outbox |
-| `inventory` | `it.tonicminds.inventory` | Synchronous reservation + async events | inventory DB (atomic reservation) |
-| `payments` | `it.tonicminds.payments` | Synchronous authorize with strict idempotency | idempotency store |
-| `notifications` | `it.tonicminds.notifications` | Fully asynchronous; degrades gracefully | (almost) stateless |
+| `catalog` | `it.g03.catalog` | Synchronous read API, tolerant of staleness | read store |
+| `orders` | `it.g03.orders` | Synchronous entry (`POST /api/orders`) + async pipeline (coroutines/Flows) | orders DB + transactional outbox |
+| `inventory` | `it.g03.inventory` | Synchronous reservation + async events | inventory DB (atomic reservation) |
+| `payments` | `it.g03.payments` | Synchronous authorize with strict idempotency | idempotency store |
+| `notifications` | `it.g03.notifications` | Fully asynchronous; degrades gracefully | (almost) stateless |
 
 The **money path** (place order → reserve inventory → authorize payment → confirm) is the critical path; SLOs, dashboards and chaos experiments centre on it.
 
@@ -29,7 +29,7 @@ The **money path** (place order → reserve inventory → authorize payment → 
 
 ```
 services/<svc>/
-  src/main/kotlin/it/tonicminds/<svc>/
+  src/main/kotlin/it/g03/<svc>/
   src/main/resources/application.yml
   src/main/resources/application-postgres.yml
 .github/workflows/ci.yml
