@@ -1,22 +1,29 @@
 spring:
   application:
+    # logical service name used in logs, metrics and discovery-related metadata
     name: inventory
   datasource:
+    # local dev database: in-memory H2 so the service starts without external dependencies
     url: jdbc:h2:mem:inventorydb
     username: sa
     password:
     driver-class-name: org.h2.Driver
   flyway:
+    # Local H2 development uses Hibernate ddl-auto; Flyway is reserved for the postgres profile
     enabled: false   # local H2 dev: schema via ddl-auto; Flyway runs only on the postgres profile
   h2:
     console:
+      # useful for debugging local state
       enabled: true
   jpa:
     hibernate:
+      # let Hibernate create/update schema in local dev
       ddl-auto: update
+    # print SQL to make persistence behavior easier to inspect locally
     show-sql: true
     properties:
       hibernate:
+        # format SQL so the output is easier to read in logs
         format_sql: true
   kafka:
     # ${VAR:default} = Spring property placeholder: use env var KAFKA_BOOTSTRAP if set
@@ -38,36 +45,49 @@ spring:
       enable-auto-commit: false
 
 server:
+  # Default local HTTP port
   port: 8080
 
 # Reservation hold semantics: a RESERVED hold not confirmed/released within `ttl` is
 # swept back to stock by the reconciler (every `sweep-interval`). ISO-8601 durations.
 inventory:
   reservation:
+    # how long a hold stays valid before it can be swept back to stock (the hold TTL)
     ttl: PT2M
+    # how often the reconciler wakes up to sweep overdue holds
     sweep-interval: PT15S
 
+# Observability (Pillar D): K8s probes, Prometheus scrape endpoint, OTel tracing
+# OTLP endpoint is a local default; in-cluster it is overridden via env (MANAGEMENT_OTLP_TRACING_ENDPOINT) to point at the collector / Tempo
 management:
   endpoints:
     web:
       exposure:
+        # expose only endpoints that service and platform actually need
         include: health,info,prometheus
   endpoint:
     health:
       probes:
+        # enable Kubernetes readiness/liveness style probes
         enabled: true
+      # show details to simplify local debug; cluster policy can override this
       show-details: always
       group:
         readiness:
+          # Readiness should reflect both application state and database availability
           include: readinessState,db
   health:
     readinessstate:
+      # Spring Boot's readiness lifecycle state
       enabled: true
     livenessstate:
+      # Spring Boot's liveness lifecycle state
       enabled: true
   tracing:
     sampling:
+      # sample every trace locally to inspect complete request flows
       probability: 1.0
   otlp:
     tracing:
+      # local default collector endpoint; overridden in cluster deployment
       endpoint: http://localhost:4318/v1/traces

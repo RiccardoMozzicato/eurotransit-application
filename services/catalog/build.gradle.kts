@@ -33,7 +33,7 @@ dependencies {
 	implementation("io.micrometer:micrometer-tracing-bridge-otel")
 	implementation("io.opentelemetry:opentelemetry-exporter-otlp")
 
-	// Schema migrations (postgres profile only): Flyway owns the schema, Hibernate validates.
+	// Schema migrations (postgres profile only): Flyway owns the schema, Hibernate validates
 	implementation("org.flywaydb:flyway-core")
 	runtimeOnly("org.flywaydb:flyway-database-postgresql")
 

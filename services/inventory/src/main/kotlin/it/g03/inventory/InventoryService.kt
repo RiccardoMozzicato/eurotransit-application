@@ -5,16 +5,19 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.Duration
 import java.time.Instant
 
 /** Outcome of a reserve call; `replayed = true` means the idempotent replay path fired. */
 data class ReserveOutcome(val reservation: Reservation, val replayed: Boolean)
 
-@Service
+@Service  // marks this as a Spring service bean (the business-logic layer, behind a transactional proxy)
 class InventoryService(
     private val items: InventoryItemRepository,
     private val reservations: ReservationRepository,
+    private val events: EventPublisher,
     private val meterRegistry: MeterRegistry,
     @Value("\${inventory.reservation.ttl}") private val reservationTtl: Duration,
 ) {
@@ -38,20 +41,23 @@ class InventoryService(
      * - Concurrency between DIFFERENT orders is decided by the conditional UPDATE
      *   (`available >= qty`): the row lock serialises them; the loser gets 0 rows = sold out.
      */
-    @Transactional
+    @Transactional  // dedup + decrement + insert all commit (or roll back) as ONE atomic unit
     fun reserve(orderId: String, productId: String, qty: Int): ReserveOutcome {
         require(qty > 0) { "qty must be positive" }
 
+        // Fast path: a prior outcome for this (orderId, productId) exists -> replay it (idempotent)
         reservations.findByOrderIdAndProductId(orderId, productId)?.let {
             outcomes("replayed").increment()
             log.info("reserve replay for order={} product={} -> {}", orderId, productId, it.status)
             return ReserveOutcome(it, replayed = true)
         }
 
+        // Reject unknown products as a domain not-found (becomes a 404 at the controller)
         if (!items.existsById(productId)) {
             throw NoSuchElementException("unknown product: $productId")
         }
 
+        // Atomic conditional decrement: 1 = seats taken, 0 = sold out (never oversell)
         val reserved = items.tryDecrement(productId, qty) == 1
         val status = if (reserved) ReservationStatus.RESERVED else ReservationStatus.REJECTED
         val reservation = reservations.save(
@@ -64,6 +70,13 @@ class InventoryService(
                 expiresAt = Instant.now().plus(reservationTtl),
             ),
         )
+        if (reserved) {
+            publishAfterCommit(
+                "inventory-reserved",
+                orderId,
+                InventoryReservedEvent(orderId = orderId, productId = productId, qty = qty),
+            )
+        }
         outcomes(if (reserved) "reserved" else "rejected").increment()
         log.info("reserve order={} product={} qty={} -> {}", orderId, productId, qty, status)
         return ReserveOutcome(reservation, replayed = false)
@@ -76,7 +89,7 @@ class InventoryService(
      * runs its compensation instead of confirming a seat we no longer hold.
      * Idempotent: confirming a CONFIRMED reservation replays the stored outcome.
      */
-    @Transactional
+    @Transactional  // state transition (and any restock) commit atomically
     fun confirm(orderId: String, productId: String): Reservation {
         val r = reservations.findByOrderIdAndProductId(orderId, productId)
             ?: throw NoSuchElementException("no reservation for order=$orderId product=$productId")
@@ -85,6 +98,7 @@ class InventoryService(
                 r.status = ReservationStatus.EXPIRED
                 reservations.save(r) // explicit save: restock() flushes+clears the context
                 items.restock(r.productId, r.qty)
+                publishReleasedAfterCommit(r, reason = "expired")
                 log.warn("confirm arrived after TTL for order={} -> EXPIRED (restocked)", orderId)
             } else {
                 r.status = ReservationStatus.CONFIRMED
@@ -98,7 +112,7 @@ class InventoryService(
      * Saga compensation (payment failed/aborted): RESERVED → RELEASED + restock.
      * Idempotent: releasing an already-terminal reservation replays the stored outcome.
      */
-    @Transactional
+    @Transactional  // status flip + restock commit atomically
     fun release(orderId: String, productId: String): Reservation {
         val r = reservations.findByOrderIdAndProductId(orderId, productId)
             ?: throw NoSuchElementException("no reservation for order=$orderId product=$productId")
@@ -106,6 +120,7 @@ class InventoryService(
             r.status = ReservationStatus.RELEASED
             reservations.save(r) // explicit save: restock() flushes+clears the context
             items.restock(r.productId, r.qty)
+            publishReleasedAfterCommit(r, reason = "released")
             log.info("released reservation for order={} product={} (restocked {})", orderId, productId, r.qty)
         }
         return r
@@ -115,7 +130,7 @@ class InventoryService(
      * Reconciler sweep (invoked by [ReservationReconciler]): expire overdue holds and give
      * the seats back, so a crashed/never-finished saga cannot strand inventory forever.
      */
-    @Transactional
+    @Transactional  // all sweep transitions and restocks commit atomically
     fun expireOverdue(now: Instant): Int {
         val overdue = reservations.findByStatusAndExpiresAtBefore(ReservationStatus.RESERVED, now)
         // Persist ALL status transitions before the first restock: restock() clears the
@@ -123,9 +138,31 @@ class InventoryService(
         overdue.forEach { it.status = ReservationStatus.EXPIRED }
         reservations.saveAll(overdue)
         overdue.forEach { items.restock(it.productId, it.qty) }
+        overdue.forEach { publishReleasedAfterCommit(it, reason = "expired") }
         if (overdue.isNotEmpty()) {
             outcomes("expired").increment()
         }
         return overdue.size
+    }
+
+    // Convenience wrapper: emit the inventory-released event for a reservation (released | expired)
+    private fun publishReleasedAfterCommit(r: Reservation, reason: String) =
+        publishAfterCommit(
+            "inventory-released",
+            r.orderId,
+            InventoryReleasedEvent(orderId = r.orderId, productId = r.productId, qty = r.qty, reason = reason),
+        )
+
+    /**
+     * Publish only AFTER the surrounding transaction commits: publishing inside it could
+     * announce a state change that then rolls back (ghost event). Best-effort by design —
+     * these events are informational (see EventPublishing.kt).
+     */
+    private fun publishAfterCommit(topic: String, key: String, payload: Any) {
+        TransactionSynchronizationManager.registerSynchronization(
+            object : TransactionSynchronization {
+                override fun afterCommit() = events.publish(topic, key, payload)
+            },
+        )
     }
 }

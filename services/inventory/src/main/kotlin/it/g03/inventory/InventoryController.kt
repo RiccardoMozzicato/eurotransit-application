@@ -5,8 +5,10 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.time.Instant
 
+// Request body for a reserve call (the saga's "hold these seats now")
 data class ReserveRequest(val orderId: String, val productId: String, val qty: Int = 1)
 
+// Response body carrying the reservation outcome back to the caller (Orders)
 data class ReservationResponse(
     val orderId: String,
     val productId: String,
@@ -17,6 +19,7 @@ data class ReservationResponse(
     val replayed: Boolean,
 )
 
+// Maps a persisted Reservation entity to the API response DTO
 private fun Reservation.toResponse(replayed: Boolean = false) =
     ReservationResponse(orderId, productId, qty, status, expiresAt, replayed)
 
@@ -29,39 +32,48 @@ private fun Reservation.toResponse(replayed: Boolean = false) =
  * errors are reserved for transport/contract problems (and would trip retries and the
  * caller's circuit breaker for something that is not a failure).
  */
-@RestController
-@RequestMapping("/api/inventory")
+
+@RestController   // exposes this class as a REST controller (will return values as HTTP responses)
+
+@RequestMapping("/api/inventory") // sets the base path for every endpoint defined in this controller
 class InventoryController(
     private val service: InventoryService,
     private val items: InventoryItemRepository,
 ) {
 
+    // POST /api/inventory/reservations -> holds seats for an order (returns RESERVED or REJECTED)
     @PostMapping("/reservations")
     fun reserve(@RequestBody request: ReserveRequest): ReservationResponse {
         val outcome = service.reserve(request.orderId, request.productId, request.qty)
         return outcome.reservation.toResponse(replayed = outcome.replayed)
     }
 
+    // POST /api/inventory/reservations/{orderId}/{productId}/confirm -> confirms a held reservation (payment authorized)
     @PostMapping("/reservations/{orderId}/{productId}/confirm")
     fun confirm(@PathVariable orderId: String, @PathVariable productId: String): ReservationResponse =
         service.confirm(orderId, productId).toResponse()
 
+    // POST /api/inventory/reservations/{orderId}/{productId}/release -> releases a held reservation and restocks (saga compensation)
     @PostMapping("/reservations/{orderId}/{productId}/release")
     fun release(@PathVariable orderId: String, @PathVariable productId: String): ReservationResponse =
         service.release(orderId, productId).toResponse()
 
     /** Availability snapshot — also used to verify the "never oversell" invariant in chaos runs. */
+    // GET /api/inventory/items/{productId} -> looks up a single inventory item by its product id
     @GetMapping("/items/{productId}")
     fun item(@PathVariable productId: String): InventoryItem =
         items.findById(productId).orElseThrow { NoSuchElementException("unknown product: $productId") }
 
+    // GET /api/inventory/items -> returns the full list of inventory items
     @GetMapping("/items")
     fun items(): List<InventoryItem> = items.findAll()
 
+    // Converts a missing product/reservation into a 404 response with a small JSON error body
     @ExceptionHandler(NoSuchElementException::class)
     fun notFound(e: NoSuchElementException): ResponseEntity<Map<String, String?>> =
         ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to e.message))
 
+    // Converts an invalid request (e.g. non-positive qty) into a 400 response with a small JSON error body
     @ExceptionHandler(IllegalArgumentException::class)
     fun badRequest(e: IllegalArgumentException): ResponseEntity<Map<String, String?>> =
         ResponseEntity.status(HttpStatus.BAD_REQUEST).body(mapOf("error" to e.message))

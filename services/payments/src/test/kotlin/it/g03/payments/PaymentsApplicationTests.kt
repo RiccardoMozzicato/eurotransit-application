@@ -3,10 +3,17 @@ package it.g03.payments
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.SpringBootTest
 
-@SpringBootTest(properties = ["spring.kafka.bootstrap-servers=localhost:9092"])
+// Minimal smoke test to verify if the Spring context fails to start
+@SpringBootTest(
+	properties = [
+		"spring.kafka.bootstrap-servers=localhost:9092",
+		"events.publish.enabled=false",
+	],
+)
 class PaymentsApplicationTests {
 
 	@Test
+	// no assertions needed (successful startup is the assertion)
 	fun contextLoads() {
 	}
 }

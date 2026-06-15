@@ -35,6 +35,19 @@ spring:
 server:
   port: 8080
 
+app:
+  # Flat demo pricing: looking prices up in Catalog would add a sync dependency to the
+  # money path that the track's interaction shape does not call for.
+  unit-price-cents: 1000
+  # Sibling-service base URLs: env vars in-cluster (Kubernetes Service DNS, injected by
+  # the Helm chart), localhost ports for local multi-process dev.
+  inventory-base-url: ${INVENTORY_BASE_URL:http://localhost:8081}
+  payments-base-url: ${PAYMENTS_BASE_URL:http://localhost:8082}
+  # Transactional-outbox relay (see OutboxPublisher): tests set enabled=false.
+  outbox:
+    enabled: true
+    poll-interval: PT0.5S
+
 management:
   endpoints:
     web:

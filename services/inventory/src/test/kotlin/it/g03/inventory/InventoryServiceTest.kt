@@ -10,22 +10,27 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-@SpringBootTest(properties = ["spring.kafka.bootstrap-servers=localhost:9092"])
+@SpringBootTest(properties = ["spring.kafka.bootstrap-servers=localhost:9092", "events.publish.enabled=false"])  // boot the full Spring app context to test service + repository wiring
 class InventoryServiceTest {
 
+    // Injects the service under test
     @Autowired lateinit var service: InventoryService
+    // Injects the inventory-item repository so the test can prepare and inspect seat counts directly
     @Autowired lateinit var items: InventoryItemRepository
+    // Injects the reservation repository so the test can prepare and clean the database state directly
     @Autowired lateinit var reservations: ReservationRepository
 
+    // Small helper: reads the current available seat count for a product
     private fun available(productId: String) = items.findById(productId).orElseThrow().available
 
-    @BeforeEach
+    @BeforeEach  // runs before each test method to start from a known database state
     fun cleanSlate() {
         reservations.deleteAll()
         items.deleteAll()
         items.save(InventoryItem(productId = "TRENO-TEST", totalSeats = 10, available = 10))
     }
 
+    // Verifies a successful reserve decrements availability and records a RESERVED hold
     @Test
     fun `reserve decrements availability and records RESERVED`() {
         val outcome = service.reserve("order-1", "TRENO-TEST", 2)
@@ -35,6 +40,7 @@ class InventoryServiceTest {
         assertEquals(8, available("TRENO-TEST"))
     }
 
+    // Verifies that reserving when sold out yields REJECTED and leaves availability untouched
     @Test
     fun `sold out yields REJECTED and does not change availability`() {
         service.reserve("order-1", "TRENO-TEST", 10)
@@ -45,6 +51,7 @@ class InventoryServiceTest {
         assertEquals(0, available("TRENO-TEST"))
     }
 
+    // Verifies a duplicate reserve for the same order replays the stored outcome and decrements only once
     @Test
     fun `duplicate reserve is an idempotent replay - one decrement only`() {
         val first = service.reserve("order-1", "TRENO-TEST", 3)
@@ -56,6 +63,7 @@ class InventoryServiceTest {
         assertEquals(7, available("TRENO-TEST"), "a duplicated delivery must not decrement twice")
     }
 
+    // Verifies the recorded outcome for an orderId is immutable: a replay keeps REJECTED even after seats are restocked
     @Test
     fun `replay preserves the original outcome even after restock`() {
         service.reserve("order-1", "TRENO-TEST", 10)
@@ -71,6 +79,7 @@ class InventoryServiceTest {
         assertEquals(ReservationStatus.REJECTED, replay.reservation.status)
     }
 
+    // Verifies confirm moves a hold RESERVED -> CONFIRMED, is idempotent, and does not restock
     @Test
     fun `confirm moves RESERVED to CONFIRMED and is idempotent`() {
         service.reserve("order-1", "TRENO-TEST", 1)
@@ -80,6 +89,7 @@ class InventoryServiceTest {
         assertEquals(9, available("TRENO-TEST"), "confirm must not restock")
     }
 
+    // Verifies release restocks the held seats exactly once and is idempotent
     @Test
     fun `release restocks and is idempotent`() {
         service.reserve("order-1", "TRENO-TEST", 4)
@@ -89,6 +99,7 @@ class InventoryServiceTest {
         assertEquals(10, available("TRENO-TEST"), "released seats come back exactly once")
     }
 
+    // Verifies the slow-payment race: a confirm arriving after the TTL expires the hold and restocks (never a stale confirm)
     @Test
     fun `confirm after TTL expires the hold and restocks (slow-payment race)`() {
         // Simulate a hold whose TTL elapsed before the payment came back: design
@@ -110,6 +121,7 @@ class InventoryServiceTest {
         assertEquals(10, available("TRENO-TEST"), "expired hold must restock")
     }
 
+    // Verifies the reconciler sweep expires overdue holds, restocks their seats, and marks them EXPIRED
     @Test
     fun `reconciler sweep expires overdue holds and restocks`() {
         items.save(InventoryItem(productId = "TRENO-TEST", totalSeats = 10, available = 8))
@@ -132,6 +144,7 @@ class InventoryServiceTest {
         )
     }
 
+    // Verifies reserving an unknown product raises a not-found domain error (becomes a 404)
     @Test
     fun `unknown product is a 404-style domain error`() {
         assertFailsWith<NoSuchElementException> { service.reserve("order-1", "NO-SUCH-TRAIN", 1) }

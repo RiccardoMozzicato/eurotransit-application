@@ -29,7 +29,8 @@ import java.time.Instant
  *   An in-flight sweep transaction completes (JDBC is not interruptible) and the loop then
  *   observes cancellation at the next suspension point.
  */
-@Component
+
+@Component  // a Spring-managed bean, auto-detected by component scanning
 class ReservationReconciler(
     private val service: InventoryService,
     @Value("\${inventory.reservation.sweep-interval}") private val sweepInterval: Duration,
@@ -37,6 +38,7 @@ class ReservationReconciler(
     private val log = LoggerFactory.getLogger(javaClass)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    // Starts the sweep loop once the app context is fully up (not before beans are ready)
     @EventListener(ApplicationReadyEvent::class)
     fun start() {
         scope.launch {
@@ -57,6 +59,7 @@ class ReservationReconciler(
         }
     }
 
+    // Called by Spring on context shutdown (SIGTERM): cancels the scope for a clean, cooperative stop
     override fun destroy() {
         log.info("cancelling reservation reconciler (cooperative shutdown)")
         scope.cancel()

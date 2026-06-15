@@ -1,44 +1,53 @@
 spring:
   application:
+    # logical service name used in logs, metrics and discovery-related metadata
     name: notifications
   kafka:
-    # ${VAR:default} = env var if set (in-cluster), localhost fallback for local dev.
+    # ${VAR:default} = env var if set (in-cluster), localhost fallback for local dev
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
-    # Consumer-only service: it reacts to order-confirmed / notification-requested.
-    # Manual ack (at-least-once): a duplicate notification e-mail is an acceptable
-    # failure mode — a LOST confirmation is not.
     consumer:
+      # consumer group id: identifies this service's offsets on the notification-requested topic
       group-id: notifications
+      # start from the earliest offset when no committed offset exists for the group
       auto-offset-reset: earliest
+      # manual commit (at-least-once): a duplicated notification e-mail is an acceptable failure mode, a LOST confirmation is not!
       enable-auto-commit: false
 
 server:
+  # Default local HTTP port
   port: 8080
 
-# Notifications is fully asynchronous and stateless: readiness depends only on the app
-# itself (no DB, no downstream). It must be able to fail without failing checkout, so it
-# never appears on the synchronous critical path.
+# Observability (Pillar D): K8s probes, Prometheus scrape endpoint, OTel tracing
+# OTLP endpoint is a local default; in-cluster it is overridden via env (MANAGEMENT_OTLP_TRACING_ENDPOINT) to point at the collector / Tempo
 management:
   endpoints:
     web:
       exposure:
+        # expose only endpoints that service and platform actually need
         include: health,info,prometheus
   endpoint:
     health:
       probes:
+        # enable Kubernetes readiness/liveness style probes
         enabled: true
+      # show details to simplify local debug; cluster policy can override this
       show-details: always
       group:
         readiness:
+          # Readiness depends only on the app itself: notifications is stateless and off the critical path (no DB, no downstream)
           include: readinessState
   health:
     readinessstate:
+      # Spring Boot's readiness lifecycle state
       enabled: true
     livenessstate:
+      # Spring Boot's liveness lifecycle state
       enabled: true
   tracing:
     sampling:
+      # sample every trace locally to inspect complete request flows
       probability: 1.0
   otlp:
     tracing:
+      # local default collector endpoint; overridden in cluster deployment
       endpoint: http://localhost:4318/v1/traces

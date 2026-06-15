@@ -17,26 +17,33 @@ import kotlin.test.assertTrue
  * let EXACTLY ONE win, regardless of interleaving. This is the in-process proof of the
  * invariant; the chaos experiment later reproduces it under pod kill in the cluster.
  */
-@SpringBootTest(properties = ["spring.kafka.bootstrap-servers=localhost:9092"])
+
+@SpringBootTest(properties = ["spring.kafka.bootstrap-servers=localhost:9092", "events.publish.enabled=false"])  // boot the full Spring app context to test the concurrent reserve wiring end-to-end
 class InventoryConcurrencyTest {
 
+    // Injects the service under test
     @Autowired lateinit var service: InventoryService
+    // Injects the inventory-item repository so the test can prepare and inspect seat counts directly
     @Autowired lateinit var items: InventoryItemRepository
+    // Injects the reservation repository so the test can prepare and clean the database state directly
     @Autowired lateinit var reservations: ReservationRepository
 
+    // Thread pool that lets several reserve calls truly run at the same time
     private val pool = Executors.newFixedThreadPool(8)
 
-    @BeforeEach
+    @BeforeEach  // runs before each test method to start from a known database state
     fun cleanSlate() {
         reservations.deleteAll()
         items.deleteAll()
     }
 
+    // Tears down the thread pool after each test so threads don't leak between runs
     @AfterEach
     fun shutdownPool() {
         pool.shutdownNow()
     }
 
+    // Verifies the "two customers must not buy the last seat" invariant: with 8 threads racing for 1 seat, EXACTLY ONE wins and availability never goes negative
     @Test
     fun `only one of 8 concurrent customers gets the last seat`() {
         items.save(InventoryItem(productId = "LAST-SEAT", totalSeats = 1, available = 1))
@@ -67,6 +74,7 @@ class InventoryConcurrencyTest {
         )
     }
 
+    // Verifies that 8 concurrent duplicate deliveries of the SAME order decrement seats exactly once (idempotent under concurrency)
     @Test
     fun `concurrent duplicates of the SAME order decrement exactly once`() {
         items.save(InventoryItem(productId = "DUP-SEAT", totalSeats = 5, available = 5))

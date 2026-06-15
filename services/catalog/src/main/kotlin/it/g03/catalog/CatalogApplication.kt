@@ -8,7 +8,7 @@ import org.springframework.boot.runApplication
 @SpringBootApplication
 class CatalogApplication
 
-// Main bootstrap method: launches the Spring application context and embedded server.
+// main: launches the Spring application context and embedded server
 fun main(args: Array<String>) {
 	runApplication<CatalogApplication>(*args)
 }

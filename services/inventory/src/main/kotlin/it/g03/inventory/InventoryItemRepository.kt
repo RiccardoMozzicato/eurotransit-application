@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 
+// JpaRepository<Entity, IdType> is a Spring Data interface that provides CRUD operations and query methods (for the InventoryItem entity in this case); the IdType is String because the productId is a string. Spring Data will generate the implementation at runtime
 interface InventoryItemRepository : JpaRepository<InventoryItem, String> {
 
     /**
