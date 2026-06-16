@@ -13,8 +13,9 @@ import jakarta.persistence.*
  */
 
 @Entity  // maps this class to a database table (JPA managed entity)
-@Table(name = "inventory_items")  // pins the table name explicitly
+@Table(name = "inventory_items")
 data class InventoryItem(
+    
     @Id  // primary key
     @Column(name = "product_id", length = 64)  // shared productId vocabulary with Catalog
     val productId: String,
@@ -22,7 +23,7 @@ data class InventoryItem(
     @Column(name = "total_seats", nullable = false)  // fixed capacity for this departure
     val totalSeats: Int,
 
-    // The contended counter: mutated ONLY by the atomic conditional UPDATEs, never by entity state
+    // contended counter: mutated ONLY by the atomic conditional UPDATEs, never by entity state
     @Column(nullable = false)
     var available: Int,
 ) {

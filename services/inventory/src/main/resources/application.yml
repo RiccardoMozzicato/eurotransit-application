@@ -26,30 +26,24 @@ spring:
         # format SQL so the output is easier to read in logs
         format_sql: true
   kafka:
-    # ${VAR:default} = Spring property placeholder: use env var KAFKA_BOOTSTRAP if set
-    # (injected in-cluster by the Helm chart), else fall back to localhost for local dev.
+    # ${VAR:default} = Spring property placeholder: use env var KAFKA_BOOTSTRAP if set (injected in-cluster by the Helm chart), else fall back to localhost for local dev
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
     producer:
-      # Durable publishing: acks=all waits for the in-sync replicas (pairs with the
-      # broker's min.insync.replicas=2); idempotent producer = broker drops the
-      # duplicates created by producer-side retries.
+      # Durable publishing: acks=all waits for the in-sync replicas (pairs with the broker's min.insync.replicas=2); idempotent producer = broker drops the duplicates created by producer-side retries
       acks: all
       properties:
         enable.idempotence: true
     consumer:
       group-id: inventory
       auto-offset-reset: earliest
-      # Manual offset commit: we acknowledge only AFTER the handler durably processed
-      # the event, so a crash mid-processing causes a redelivery (at-least-once) instead
-      # of a silent loss — which is safe because our handlers are idempotent.
+      # Manual offset commit: we acknowledge only AFTER the handler durably processed the event, so a crash mid-processing causes a redelivery (at-least-once) instead of a silent loss, which is safe because our handlers are idempotent
       enable-auto-commit: false
 
 server:
   # Default local HTTP port
   port: 8080
 
-# Reservation hold semantics: a RESERVED hold not confirmed/released within `ttl` is
-# swept back to stock by the reconciler (every `sweep-interval`). ISO-8601 durations.
+# Reservation hold semantics: a RESERVED hold not confirmed/released within "ttl" is swept back to stock by the reconciler (every "sweep-interval"). ISO-8601 durations
 inventory:
   reservation:
     # how long a hold stays valid before it can be swept back to stock (the hold TTL)

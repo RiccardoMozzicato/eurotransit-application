@@ -5,32 +5,28 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.time.Instant
 
-// Request body for a reserve call (the saga's "hold these seats now")
+// request body for a reserve call ("hold these seats now")
 data class ReserveRequest(val orderId: String, val productId: String, val qty: Int = 1)
 
-// Response body carrying the reservation outcome back to the caller (Orders)
+// response body carrying the reservation outcome back to the caller (Orders)
 data class ReservationResponse(
     val orderId: String,
     val productId: String,
     val qty: Int,
     val status: ReservationStatus,
     val expiresAt: Instant,
-    /** true when this call hit the idempotent replay path (duplicate delivery/retry). */
+    /** true when this call hit the idempotent replay path (duplicate delivery/retry) */
     val replayed: Boolean,
 )
 
-// Maps a persisted Reservation entity to the API response DTO
+// maps a persisted Reservation entity to the API response DTO
 private fun Reservation.toResponse(replayed: Boolean = false) =
     ReservationResponse(orderId, productId, qty, status, expiresAt, replayed)
 
 /**
- * Internal synchronous API, called by Orders inside its async pipeline ("a reservation
- * decision must be made now"). Not exposed through the public ingress.
+ * Internal synchronous API, called by Orders inside its async pipeline ("a reservation decision must be made now"). Not exposed through the public ingress
  *
- * Domain outcomes (RESERVED vs REJECTED/sold-out) are returned as 200 + status field, not
- * as HTTP errors: sold-out is a valid business answer the saga must branch on, while HTTP
- * errors are reserved for transport/contract problems (and would trip retries and the
- * caller's circuit breaker for something that is not a failure).
+ * Domain outcomes (RESERVED vs REJECTED/sold-out) are returned as 200 + status field, not as HTTP errors: sold-out is a valid business answer the saga must branch on, while HTTP errors are reserved for transport/contract problems (and would trip retries and the caller's circuit breaker for something that is not a failure)
  */
 
 @RestController   // exposes this class as a REST controller (will return values as HTTP responses)
@@ -58,7 +54,7 @@ class InventoryController(
     fun release(@PathVariable orderId: String, @PathVariable productId: String): ReservationResponse =
         service.release(orderId, productId).toResponse()
 
-    /** Availability snapshot — also used to verify the "never oversell" invariant in chaos runs. */
+    /** Availability snapshot: also used to verify the "never oversell" invariant in chaos runs */
     // GET /api/inventory/items/{productId} -> looks up a single inventory item by its product id
     @GetMapping("/items/{productId}")
     fun item(@PathVariable productId: String): InventoryItem =
@@ -68,12 +64,12 @@ class InventoryController(
     @GetMapping("/items")
     fun items(): List<InventoryItem> = items.findAll()
 
-    // Converts a missing product/reservation into a 404 response with a small JSON error body
+    // converts a missing product/reservation into a 404 response with a small JSON error body
     @ExceptionHandler(NoSuchElementException::class)
     fun notFound(e: NoSuchElementException): ResponseEntity<Map<String, String?>> =
         ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to e.message))
 
-    // Converts an invalid request (e.g. non-positive qty) into a 400 response with a small JSON error body
+    // converts an invalid request (e.g. non-positive qty) into a 400 response with a small JSON error body
     @ExceptionHandler(IllegalArgumentException::class)
     fun badRequest(e: IllegalArgumentException): ResponseEntity<Map<String, String?>> =
         ResponseEntity.status(HttpStatus.BAD_REQUEST).body(mapOf("error" to e.message))

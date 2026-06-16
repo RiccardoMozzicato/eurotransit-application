@@ -20,7 +20,7 @@ class InventoryServiceTest {
     // Injects the reservation repository so the test can prepare and clean the database state directly
     @Autowired lateinit var reservations: ReservationRepository
 
-    // Small helper: reads the current available seat count for a product
+    // Small helper: reads current available seat count for a product
     private fun available(productId: String) = items.findById(productId).orElseThrow().available
 
     @BeforeEach  // runs before each test method to start from a known database state
@@ -72,8 +72,7 @@ class InventoryServiceTest {
 
         val replay = service.reserve("order-2", "TRENO-TEST", 1)
 
-        // The reservation outcome for an orderId is immutable: a retry-as-new-purchase
-        // must use a new orderId (documented idempotency semantics).
+        // The reservation outcome for an orderId is immutable: a retry-as-new-purchase must use a new orderId (documented idempotency semantics)
         assertTrue(replay.replayed)
         assertEquals(ReservationStatus.REJECTED, rejected.reservation.status)
         assertEquals(ReservationStatus.REJECTED, replay.reservation.status)
@@ -102,8 +101,7 @@ class InventoryServiceTest {
     // Verifies the slow-payment race: a confirm arriving after the TTL expires the hold and restocks (never a stale confirm)
     @Test
     fun `confirm after TTL expires the hold and restocks (slow-payment race)`() {
-        // Simulate a hold whose TTL elapsed before the payment came back: design
-        // refinement #3 — Orders must get EXPIRED and compensate, never a stale confirm.
+        // Simulate a hold whose TTL elapsed before the payment came back: design refinement #3: Orders must get EXPIRED and compensate, never a stale confirm.
         // (state prepared via save: @Modifying queries need a transaction, tests have none)
         items.save(InventoryItem(productId = "TRENO-TEST", totalSeats = 10, available = 9))
         reservations.save(

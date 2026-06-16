@@ -13,9 +13,7 @@ import kotlin.test.assertTrue
 
 /**
  * The "two customers must not buy the last seat" test (Pillar B, chaos #2 precondition).
- * N concurrent transactions race for 1 remaining seat: the atomic conditional UPDATE must
- * let EXACTLY ONE win, regardless of interleaving. This is the in-process proof of the
- * invariant; the chaos experiment later reproduces it under pod kill in the cluster.
+ * N concurrent transactions race for 1 remaining seat: the atomic conditional UPDATE must let EXACTLY ONE win, regardless of interleaving. This is the in-process proof of the invariant; the chaos experiment later reproduces it under pod kill in the cluster
  */
 
 @SpringBootTest(properties = ["spring.kafka.bootstrap-servers=localhost:9092", "events.publish.enabled=false"])  // boot the full Spring app context to test the concurrent reserve wiring end-to-end
@@ -80,9 +78,7 @@ class InventoryConcurrencyTest {
         items.save(InventoryItem(productId = "DUP-SEAT", totalSeats = 5, available = 5))
         val start = CountDownLatch(1)
 
-        // 8 concurrent deliveries of the same logical operation (orderId, productId):
-        // the unique constraint + same-transaction decrement guarantee a single commit;
-        // losers throw (constraint) and at-least-once redelivery would replay them.
+        // 8 concurrent deliveries of the same logical operation (orderId, productId): the unique constraint + same-transaction decrement guarantee a single commit; losers throw (constraint) and at-least-once redelivery would replay them
         val futures = (1..8).map {
             pool.submit(
                 Callable {
