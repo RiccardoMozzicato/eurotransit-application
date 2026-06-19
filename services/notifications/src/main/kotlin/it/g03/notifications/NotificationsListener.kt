@@ -11,7 +11,7 @@ import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentLinkedDeque
 
-/** Local copy of the notification-requested event shape (each service owns its copies). */
+/** Local copy of the notification-requested event shape (each service owns its copies) */
 
 data class NotificationRequested(
     val eventId: UUID,
@@ -22,33 +22,30 @@ data class NotificationRequested(
 )
 
 /**
- * FULLY ASYNCHRONOUS consumer — the graceful-degradation showcase: this service is not on
- * the critical path BY CONSTRUCTION. If it is down, events simply accumulate in Kafka
- * (consumer offsets don't move) and are delivered when it comes back; checkout has long
- * since succeeded. Nothing here is allowed to call back into the money path.
+ * FULLY ASYNCHRONOUS consumer -> graceful-degradation showcase: this service is not on the critical path BY CONSTRUCTION. If it is down, events simply accumulate in Kafka (consumer offsets don't move) and are delivered when it comes back. Nothing here is allowed to call back into the money path.
  *
- * The "email" sink is a log line + a small in-memory ring buffer exposed over HTTP so the
- * demo can SHOW notifications flowing (in-memory on purpose: this service owns no state
- * worth keeping — losing the buffer on restart is part of its contract).
+ * The "email" sink is a log line + a small in-memory ring buffer exposed over HTTP so the demo can SHOW notifications flowing (in-memory on purpose: this service owns no state worth keeping; losing the buffer on restart is part of its contract).
  *
- * At-least-once note (see application.yml): a duplicated delivery means a duplicated
- * e-mail — acceptable; a LOST confirmation would not be.
+ * At-least-once strategy (see application.yml): a duplicated delivery means a duplicated
+ * e-mail -> acceptable (a LOST confirmation instead is not acceptable)!
  */
 
 @Component   // registers this class as a Spring-managed bean (so the @KafkaListener is wired up)
+
 class NotificationsListener(private val objectMapper: ObjectMapper) {
 
     // Logger used to make the mock e-mail "send" observable in the service logs
     private val log = LoggerFactory.getLogger(javaClass)
 
-    // Most recent notifications, newest first, capped (in-memory ring buffer)
+    // most recent notifications, newest first, capped (in-memory ring buffer)
     val recent = ConcurrentLinkedDeque<NotificationRequested>()
 
-    // Consumes notification-requested off Kafka: this is the FULLY-ASYNC, graceful-degradation path (NOT the money path) — if it lags or is down, events simply wait in the topic and checkout is unaffected!
+    // consumes notification-requested off Kafka: this is the FULLY-ASYNC, graceful-degradation path (NOT the money path) -> if it lags or is down, events simply wait in the topic and checkout is unaffected!
     @KafkaListener(topics = ["notification-requested"], autoStartup = "\${app.kafka-listeners-enabled:true}") // subscribes to the notification-requested topic; autoStartup can be disabled in tests
+
     fun onNotificationRequested(payload: String) {
         val n = objectMapper.readValue(payload, NotificationRequested::class.java)
-        // The mock e-mail "send": observable in logs and via GET /api/notifications.
+        // the mock e-mail "send": observable in logs and via GET /api/notifications
         log.info("[MAIL to {}] order {}: {}", n.recipient, n.orderId, n.message)
         recent.addFirst(n)
         while (recent.size > 100) recent.pollLast()
@@ -57,7 +54,7 @@ class NotificationsListener(private val objectMapper: ObjectMapper) {
 
 @RestController   // exposes this class as a REST controller (will return values as HTTP responses)
 
-@RequestMapping("/api/notifications") // sets the base path for every endpoint defined in this controller
+@RequestMapping("/api/notifications") // sets the base path for every endpoint in this controller
 class NotificationsController(private val listener: NotificationsListener) {
 
     // GET /api/notifications -> returns the notifications this instance has "sent" so far

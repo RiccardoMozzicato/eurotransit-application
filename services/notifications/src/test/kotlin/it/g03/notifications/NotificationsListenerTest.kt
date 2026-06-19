@@ -11,6 +11,7 @@ import kotlin.test.assertEquals
         "app.kafka-listeners-enabled=false",
     ],
 )
+
 class NotificationsListenerTest {
 
     // Injects the listener under test
@@ -19,7 +20,7 @@ class NotificationsListenerTest {
     // Verifies the listener parses a notification-requested payload and records it (pins the notification-requested wire contract produced by Orders' outbox)
     @Test
     fun `parses a notification-requested payload and records it`() {
-        // Hand-written JSON: pins the wire contract produced by Orders' outbox.
+        // Hand-written JSON: pins the wire contract produced by Orders' outbox
         val json = """
             {"eventId":"7e57d004-2b97-0e7a-b45f-5387367791cd",
              "orderId":"order-1",

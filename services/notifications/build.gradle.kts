@@ -20,12 +20,12 @@ repositories {
 }
 
 dependencies {
-	// Minimal web surface: only to expose Actuator probes/metrics. No business REST API.
+	// Minimal web surface: only to expose Actuator probes/metrics. No business REST API
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("tools.jackson.module:jackson-module-kotlin")
 
-	// Fully asynchronous: Kafka consumer + coroutines. Notifications owns (almost) no state.
+	// Fully asynchronous: Kafka consumer + coroutines. Notifications owns (almost) no state
 	implementation("org.springframework.kafka:spring-kafka")
 	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
 
