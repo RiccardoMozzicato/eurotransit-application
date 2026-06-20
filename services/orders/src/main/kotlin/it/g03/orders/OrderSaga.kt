@@ -5,20 +5,14 @@ import org.springframework.stereotype.Component
 import java.util.UUID
 
 /**
- * THE ORCHESTRATED SAGA (design decision #3): Orders is the coordinator; the stages are
- * driven by Kafka (order-placed triggers this handler) but each decision is taken via a
- * SYNCHRONOUS call ("a decision must be made now").
+ * THE ORCHESTRATED SAGA (design decision #3): Orders is the coordinator; the stages are driven by Kafka (order-placed triggers this handler) but each decision is taken via a SYNCHRONOUS call ("a decision must be made now")!
  *
  * Crash/redelivery semantics (at-least-once, chaos #2/#4):
- * - this method deliberately holds NO database transaction across remote calls; each
- *   transition commits separately via [OrderStateMachine];
- * - every downstream operation is idempotent (Inventory/Payments replay stored outcomes),
- *   so re-running the saga after a crash resumes from where it left off:
- *   PENDING → re-runs everything; RESERVED → skips reserve; terminal → no-op.
- * - a TRANSPORT failure (timeout, 5xx) THROWS: the Kafka listener's default error handler
- *   retries with backoff, then logs & skips. A skipped order stays PENDING/RESERVED and
- *   is visible on dashboards; Phase 2 adds the circuit breaker + PAYMENT_PENDING fallback
- *   and a recovery sweep for stranded orders.
+ * - this method deliberately holds NO database transaction across remote calls; each transition commits separately via [OrderStateMachine]
+ * - every downstream operation is idempotent (Inventory/Payments replay stored outcomes), so re-running the saga after a crash resumes from where it left off: PENDING → re-runs everything; RESERVED → skips reserve; terminal → no-op
+ * - a TRANSPORT failure (timeout, 5xx) THROWS: the Kafka listener's default error handler retries with backoff, then logs & skips. A skipped order stays PENDING/RESERVED and is visible on dashboards
+ * 
+ * Phase 2 adds the circuit breaker + PAYMENT_PENDING fallback and a recovery sweep for stranded orders
  */
 
 @Component // registers this class as a Spring-managed bean
@@ -41,7 +35,7 @@ class OrderSaga(
         }
         val id = orderId.toString()
 
-        // Stage 1 — reserve the contended resource (skipped when resuming from RESERVED).
+        // Stage 1 -> reserve the contended resource (skipped when resuming from RESERVED)
         if (order.status == OrderStatus.PENDING) {
             val reservation = inventory.reserve(id, order.productId, order.qty)
             if (reservation.status == "REJECTED") {
@@ -51,7 +45,7 @@ class OrderSaga(
             stateMachine.markReserved(orderId)
         }
 
-        // Stage 2 — authorize the payment (strictly idempotent on the Payments side).
+        // Stage 2 -> authorize the payment (strictly idempotent on the Payments side)
         val authorization = payments.authorize(id, order.amountCents)
         if (authorization.status == "DECLINED") {
             // Compensation: give the seats back, then reject.
@@ -60,13 +54,11 @@ class OrderSaga(
             return
         }
 
-        // Stage 3 — confirm the hold (guards the slow-payment-vs-TTL race, refinement #3):
-        // Inventory re-checks the hold is still valid; if it expired meanwhile we must NOT
-        // confirm a seat we no longer hold.
+        // Stage 3 -> confirm the hold (guards the slow-payment-vs-TTL race, refinement #3): Inventory re-checks the hold is still valid; if it expired meanwhile we must NOT confirm a seat we no longer hold
         val confirmation = inventory.confirm(id, order.productId)
         if (confirmation.status != "CONFIRMED") {
-            // TODO Phase 2: compensate the charge (refund/void on Payments) — tracked in
-            // docs/design.md; for now the rejection is recorded and observable.
+            // TODO Phase 2: compensate the charge (refund/void on Payments): tracked in
+            // docs/design.md; for now the rejection is recorded and observable!
             stateMachine.reject(orderId, RejectionReason.RESERVATION_EXPIRED)
             return
         }

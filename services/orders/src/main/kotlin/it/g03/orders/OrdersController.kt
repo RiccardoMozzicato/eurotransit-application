@@ -18,16 +18,15 @@ data class OrderResponse(
     val reason: RejectionReason?,
 )
 
-// Maps the internal Order entity to the public OrderResponse DTO
+// maps the internal Order entity to the public OrderResponse DTO
 private fun Order.toResponse() = OrderResponse(id, productId, qty, amountCents, status, reason)
 
 /**
- * PUBLIC API (exposed through the ingress at /api/orders).
+ * PUBLIC API (exposed through the ingress at /api/orders)
  *
- * POST returns **202 Accepted**: the user gets an immediate, durable acknowledgement
- * (order + outbox event committed) while reservation/payment/confirmation proceed through
- * the Kafka-driven pipeline. GET lets clients (and the demo) observe the order reaching a
- * terminal state.
+ * POST returns **202 Accepted**: the user gets an immediate, durable acknowledgement (order + outbox event committed) while reservation/payment/confirmation proceed through the Kafka-driven pipeline
+ * 
+ * GET lets clients (and the demo) observe the order reaching a terminal state
  */
 
 @RestController   // exposes this class as a REST controller (will return values as HTTP responses)
@@ -46,12 +45,12 @@ class OrdersController(private val service: OrderService) {
     @GetMapping("/{orderId}")
     fun get(@PathVariable orderId: UUID): OrderResponse = service.get(orderId).toResponse()
 
-    // Converts a missing order into a 404 response with a small JSON error body
+    // converts a missing order into a 404 response with a small JSON error body
     @ExceptionHandler(NoSuchElementException::class)
     fun notFound(e: NoSuchElementException): ResponseEntity<Map<String, String?>> =
         ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to e.message))
 
-    // Converts an invalid request (blank productId / non-positive qty) into a 400 response with a small JSON error body
+    // converts an invalid request (blank productId / non-positive qty) into a 400 response with a small JSON error body
     @ExceptionHandler(IllegalArgumentException::class)
     fun badRequest(e: IllegalArgumentException): ResponseEntity<Map<String, String?>> =
         ResponseEntity.status(HttpStatus.BAD_REQUEST).body(mapOf("error" to e.message))

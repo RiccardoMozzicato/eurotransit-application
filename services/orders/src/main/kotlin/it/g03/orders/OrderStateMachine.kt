@@ -7,16 +7,12 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Transactional order-state transitions + their outbox events.
+ * Transactional order-state transitions + their outbox events
  *
- * Why a SEPARATE bean from [OrderSaga]: @Transactional works through Spring's proxy, so a
- * method calling its own @Transactional sibling (self-invocation) would BYPASS the proxy
- * and run without a transaction — a classic pitfall. The saga (which makes remote calls
- * and must NOT hold a DB transaction across them) calls into this bean, so each
- * transition+outbox pair commits atomically.
+ * Why this is a separate bean from [OrderSaga]: Spring applies @Transactional through a proxy, so a method calling another @Transactional method on the same object would bypass the proxy and run without a transaction.
+ * The saga makes remote calls and must not keep a DB transaction open across them, so it calls this bean instead. That way, each transition and its outbox writes commit together atomically!
  *
- * Every transition is idempotent (terminal-state guards): an at-least-once redelivery
- * that re-runs the saga cannot append duplicate events or flip a terminal order.
+ * Every transition is idempotent (terminal-state guards): an at-least-once redelivery that re-runs the saga can't append duplicate events or flip a terminal order!
  */
 
 @Component // registers this class as a Spring-managed bean
@@ -37,7 +33,7 @@ class OrderStateMachine(
         }
     }
 
-    /** Terminal happy end: emits order-confirmed + the confirmation notification. */
+    // Terminal happy end: emits order-confirmed + the confirmation notification
     @Transactional // transition + both outbox events commit atomically in one transaction
     fun confirm(orderId: UUID) {
         val order = load(orderId)
@@ -57,7 +53,7 @@ class OrderStateMachine(
         log.info("order {} CONFIRMED", id)
     }
 
-    /** Terminal rejection: emits order-rejected + a notification (the user is told why). */
+    // Terminal rejection: emits order-rejected + a notification (the user is told why)
     @Transactional // transition + both outbox events commit atomically in one transaction
     fun reject(orderId: UUID, reason: RejectionReason) {
         val order = load(orderId)

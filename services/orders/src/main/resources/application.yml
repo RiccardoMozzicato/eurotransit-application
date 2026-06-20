@@ -28,22 +28,19 @@ spring:
     consumer:
       group-id: orders
       auto-offset-reset: earliest
-      # Manual ack: we commit the offset only after the handler has durably processed
-      # the event, so an at-least-once redelivery is safe (consumers are idempotent).
+      # Manual ack: we commit the offset only after the handler has durably processed the event, so an at-least-once redelivery is safe (consumers are idempotent)
       enable-auto-commit: false
 
 server:
   port: 8080
 
 app:
-  # Flat demo pricing: looking prices up in Catalog would add a sync dependency to the
-  # money path that the track's interaction shape does not call for.
+  # Flat demo pricing: looking prices up in Catalog would add a sync dependency to the money path that the track's interaction shape does not call for
   unit-price-cents: 1000
-  # Sibling-service base URLs: env vars in-cluster (Kubernetes Service DNS, injected by
-  # the Helm chart), localhost ports for local multi-process dev.
+  # Sibling-service base URLs: env vars in-cluster (Kubernetes Service DNS, injected by the Helm chart), localhost ports for local multi-process dev
   inventory-base-url: ${INVENTORY_BASE_URL:http://localhost:8081}
   payments-base-url: ${PAYMENTS_BASE_URL:http://localhost:8082}
-  # Transactional-outbox relay (see OutboxPublisher): tests set enabled=false.
+  # Transactional-outbox relay (see OutboxPublisher): tests set enabled=false
   outbox:
     enabled: true
     poll-interval: PT0.5S
@@ -58,9 +55,7 @@ management:
       probes:
         enabled: true
       show-details: always
-      # Readiness depends on our OWN database. Kafka outages are absorbed by the async
-      # pipeline (retry/redelivery), so we deliberately keep Kafka OUT of readiness to
-      # avoid flapping the critical sync entry API on transient broker issues.
+      # Readiness depends on our OWN database. Kafka outages are absorbed by the async pipeline (retry/redelivery), so we deliberately keep Kafka OUT of readiness to avoid flapping the critical sync entry API on transient broker issues
       group:
         readiness:
           include: readinessState,db

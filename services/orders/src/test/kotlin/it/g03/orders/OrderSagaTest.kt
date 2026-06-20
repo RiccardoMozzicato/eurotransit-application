@@ -11,11 +11,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Saga orchestration tests: real Spring context + H2 + REAL state machine/outbox, but the
- * sibling services are FAKES (the gateways are interfaces precisely for this). The HTTP
- * integration itself is exercised in-cluster; here we prove the ORCHESTRATION LOGIC:
- * branching, compensation, terminal-state idempotency, and the outbox trail.
+ * Saga orchestration tests: real Spring context + H2 + REAL state machine/outbox, but the sibling services are FAKES (the gateways are interfaces precisely for this)
+ * The HTTP integration itself is exercised in-cluster; here we prove the ORCHESTRATION LOGIC: branching, compensation, terminal-state idempotency and the outbox trail
  */
+
 @SpringBootTest(  // boot the full Spring app context to test saga + state machine + outbox wiring
     properties = [
         "spring.kafka.bootstrap-servers=localhost:9092",
@@ -27,7 +26,7 @@ import kotlin.test.assertTrue
 
 class OrderSagaTest {
 
-    /** Mutable fakes the tests steer; @Primary overrides the HTTP gateway beans. */
+    // Mutable fakes the tests steer; @Primary overrides the HTTP gateway beans
     class FakeInventory : InventoryGateway {
         var reserveStatus = "RESERVED"
         var confirmStatus = "CONFIRMED"

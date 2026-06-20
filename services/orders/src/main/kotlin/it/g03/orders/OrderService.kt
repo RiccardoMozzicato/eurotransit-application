@@ -13,19 +13,16 @@ class OrderService(
     private val outbox: Outbox,
     private val meterRegistry: MeterRegistry,
     /**
-     * Flat demo pricing: looking prices up in Catalog would add a synchronous dependency
-     * to the money path that the track's interaction shape does not call for (client →
-     * Catalog is for browsing; Orders → Inventory/Payments are the decision calls).
+     * Flat demo pricing: looking prices up in Catalog would add a synchronous dependency to the money path that the track's interaction shape does not call for (client -> Catalog is for browsing; Orders -> Inventory/Payments are the decision calls)
      */
     @Value("\${app.unit-price-cents}") private val unitPriceCents: Long,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
-     * THE synchronous entry of the money path: persist the order (PENDING) and its
-     * order-placed event in ONE transaction (transactional outbox — no dual-write), then
-     * return immediately. Everything else happens asynchronously: the caller gets 202 +
-     * orderId and can poll GET /api/orders/{id}.
+     * THE synchronous entry of the money path: persist the order (PENDING) and its order-placed event in ONE transaction (transactional outbox to don't have dual-writes), then return immediately
+     * 
+     * Everything else happens asynchronously: the caller gets 202 + orderId and can poll GET /api/orders/{id}
      */
     @Transactional // order row + order-placed outbox event commit atomically (no dual-write)
     fun placeOrder(productId: String, qty: Int): Order {
@@ -40,7 +37,7 @@ class OrderService(
             Topics.ORDER_PLACED, id,
             OrderPlacedEvent(orderId = id, productId = productId, qty = qty, amountCents = order.amountCents),
         )
-        // Business metric for the checkout SLIs (orders accepted = SLO denominator).
+        // Business metric for the checkout SLIs (orders accepted = SLO denominator)
         meterRegistry.counter("orders_placed_total").increment()
         log.info("order {} placed (product={}, qty={})", id, productId, qty)
         return order

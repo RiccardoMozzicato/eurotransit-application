@@ -10,9 +10,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
- * Outbox relay semantics: at-least-once with ordering preserved. The publisher under test
- * is constructed manually (ticker disabled) with a recording/failing fake, against the
- * real repository.
+ * Outbox relay semantics: at-least-once with ordering preserved. The publisher under test is constructed manually (ticker disabled) with a recording/failing fake, against the real repository
  */
 @SpringBootTest(
     properties = [
@@ -77,7 +75,7 @@ class OutboxPublisherTest {
         assertEquals(0, publisher.drainOnce(), "nothing published while the broker fails")
         outbox.findAll().forEach { assertNull(it.publishedAt, "nothing may be marked on failure") }
 
-        // "broker recovers": the next drain delivers everything, still in order.
+        // "broker recovers": the next drain delivers everything, still in order
         recorder.failOnKey = null
         assertEquals(2, publisher.drainOnce())
         assertEquals(listOf("order-placed" to "fail-me", "order-confirmed" to "fail-me"), recorder.published)

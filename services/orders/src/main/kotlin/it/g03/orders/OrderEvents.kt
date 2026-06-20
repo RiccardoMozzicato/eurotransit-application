@@ -3,7 +3,7 @@ package it.g03.orders
 import java.time.Instant
 import java.util.UUID
 
-/** Topics this service produces to / consumes from (created by Strimzi, config repo). */
+/** Topics this service produces to / consumes from (created by Strimzi, config repo) */
 object Topics {
     const val ORDER_PLACED = "order-placed"               // consumed by our own saga ("listen to yourself")
     const val ORDER_CONFIRMED = "order-confirmed"         // emitted on the terminal happy path
@@ -12,10 +12,8 @@ object Topics {
 }
 
 /**
- * Event payloads (JSON over Kafka). Each service keeps its OWN copy of the event shapes
- * it touches (no shared library): duplicating a few small data classes is the standard
- * microservice trade-off against coupling every service to a common jar's release cycle.
- * Every event carries an eventId (consumer-side dedup/tracing) and occurredAt.
+ * Event payloads (JSON over Kafka). Each service keeps its OWN copy of the event shapes it touches (no shared library): duplicating a few small data classes is the standard microservice trade-off against coupling every service to a common jar's release cycle.
+ * Every event carries an eventId (consumer-side dedup/tracing) and occurredAt
  */
 
 // Emitted when an order is first placed; triggers the saga
@@ -35,7 +33,7 @@ data class OrderConfirmedEvent(
     val occurredAt: Instant = Instant.now(),
 )
 
-// Emitted on any terminal rejection; carries the reason for observability/notification
+// Emitted on any terminal rejection (order reached REJECTED) + carries the reason for observability/notification
 data class OrderRejectedEvent(
     val eventId: UUID = UUID.randomUUID(),
     val orderId: String,
@@ -43,7 +41,7 @@ data class OrderRejectedEvent(
     val occurredAt: Instant = Instant.now(),
 )
 
-// Asks the Notifications service to message the user (the informational tail of the saga)
+// Asks the Notifications service to message the user (the informational tail of the saga, not load-bearing)
 data class NotificationRequestedEvent(
     val eventId: UUID = UUID.randomUUID(),
     val orderId: String,

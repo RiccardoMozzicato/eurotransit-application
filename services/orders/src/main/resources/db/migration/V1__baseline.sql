@@ -1,5 +1,5 @@
--- Orders schema: the saga aggregate + the TRANSACTIONAL OUTBOX.
--- Flyway owns this schema on the postgres profile; Hibernate only validates.
+-- Orders schema: the saga aggregate + the TRANSACTIONAL OUTBOX
+-- Flyway owns this schema on the postgres profile; Hibernate only validates
 
 CREATE TABLE orders (
     id           UUID        PRIMARY KEY,
@@ -12,8 +12,7 @@ CREATE TABLE orders (
     updated_at   TIMESTAMPTZ NOT NULL
 );
 
--- The outbox: events are INSERTed here in the SAME transaction as the business change
--- (no dual-write); the relay publishes unpublished rows to Kafka and stamps published_at.
+-- The outbox: events are INSERTed here in the SAME transaction as the business change (no dual-write); the relay publishes unpublished rows to Kafka and stamps published_at
 CREATE TABLE outbox_events (
     id           UUID          PRIMARY KEY,
     topic        VARCHAR(64)   NOT NULL,
@@ -23,5 +22,5 @@ CREATE TABLE outbox_events (
     published_at TIMESTAMPTZ
 );
 
--- Partial index: the relay only ever scans unpublished rows (kept tiny by definition).
+-- Partial index: the relay only ever scans unpublished rows (kept tiny by definition)
 CREATE INDEX idx_outbox_unpublished ON outbox_events (created_at) WHERE published_at IS NULL;

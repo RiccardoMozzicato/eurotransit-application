@@ -4,9 +4,8 @@ import org.springframework.stereotype.Component
 import tools.jackson.databind.ObjectMapper
 
 /**
- * Appends an event to the outbox table. MUST be called inside an active transaction
- * (it participates in the caller's @Transactional): that is the whole point of the
- * pattern — the business change and its event commit or roll back TOGETHER.
+ * Appends an event to the outbox table.
+ * MUST be called inside an active transaction (it participates in the caller's @Transactional): that is the whole point of the pattern, the business change and its event commit or roll back TOGETHER
  */
 
 @Component // registers this class as a Spring-managed bean

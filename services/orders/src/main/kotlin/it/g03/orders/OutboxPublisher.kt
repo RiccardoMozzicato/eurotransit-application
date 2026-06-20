@@ -20,14 +20,10 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * The OUTBOX RELAY — the second half of the transactional-outbox pattern, implemented as
- * a Kotlin **Flow** pipeline (Pillar A): a ticker Flow drives periodic drains inside a
- * supervised CoroutineScope (the failure domain), cancelled cooperatively on SIGTERM.
+ * The OUTBOX RELAY = the second half of the transactional-outbox pattern, implemented as a Kotlin **Flow** pipeline (Pillar A): a ticker Flow drives periodic drains inside a supervised CoroutineScope (the failure domain), cancelled cooperatively on SIGTERM
  *
- * Delivery guarantee: AT-LEAST-ONCE. Mark-as-published happens only AFTER the broker ack
- * (publish throws otherwise); a crash between send and mark causes a re-send, which
- * consumers absorb because they are idempotent. On a failed send we STOP the batch (not
- * skip): publishing the next event first would break per-order event ordering.
+ * Delivery guarantee: AT-LEAST-ONCE. Mark-as-published happens only AFTER the broker ack (publish throws otherwise); a crash between send and mark causes a re-send, which consumers absorb because they are idempotent
+ * On a failed send we STOP the batch (not skip): publishing the next event first would break per-order event ordering!
  */
 
 @Component // registers this class as a Spring-managed bean
@@ -40,7 +36,7 @@ class OutboxPublisher(
     private val log = LoggerFactory.getLogger(javaClass)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    /** Cold ticker Flow: emits Unit every [pollInterval] until the scope is cancelled. */
+    // Cold ticker Flow: emits Unit every [pollInterval] until the scope is cancelled
     private fun ticker(interval: Duration) = flow {
         while (currentCoroutineContext().isActive) {
             delay(interval.toMillis())
@@ -49,6 +45,7 @@ class OutboxPublisher(
     }
 
     @EventListener(ApplicationReadyEvent::class) // runs once the app is fully started (skips the relay if disabled)
+    
     // Launches the periodic drain loop on the supervised scope
     fun start() {
         if (!enabled) {
@@ -58,9 +55,8 @@ class OutboxPublisher(
         log.info("outbox relay started (poll every {})", pollInterval)
         ticker(pollInterval)
             .onEach {
-                // Supervisor semantics: a failed drain logs and waits for the next tick.
-                // The only suspension point (delay) is inside the ticker, so cooperative
-                // cancellation is never swallowed by this runCatching.
+                // Supervisor semantics: a failed drain logs and waits for the next tick
+                // The only suspension point (delay) is inside the ticker, so cooperative cancellation is never swallowed by this runCatching
                 runCatching { drainOnce() }
                     .onFailure { log.warn("outbox drain failed, will retry: {}", it.message) }
             }
@@ -68,8 +64,7 @@ class OutboxPublisher(
     }
 
     /**
-     * One drain pass; also called directly by tests. Returns how many events were
-     * published and marked.
+     * One drain pass; also called directly by tests. Returns how many events were published and marked
      */
     fun drainOnce(): Int {
         val batch = outbox.findTop50ByPublishedAtIsNullOrderByCreatedAtAsc()

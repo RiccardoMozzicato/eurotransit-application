@@ -10,36 +10,33 @@ import java.time.Instant
 import java.util.UUID
 
 /*
- * Synchronous gateways to the sibling services ("a decision must be made NOW" — these
- * calls happen INSIDE the async pipeline, see docs/design.md). They are interfaces so the
- * saga is testable with fakes; the HTTP implementations carry connect/read TIMEOUTS on
- * every call (Pillar C: no unbounded waits). Phase 2 wraps these same gateways with
- * Resilience4j (circuit breaker / retry+jitter / bulkhead).
+ * Synchronous gateways to the sibling services ("a decision must be made NOW" -> these calls happen INSIDE the async pipeline, see docs/design.md). They are interfaces so the saga is testable with fakes; the HTTP implementations carry connect/read TIMEOUTS on every call (Pillar C: no unbounded waits).
+ * Phase 2 wraps these same gateways with Resilience4j (circuit breaker / retry+jitter / bulkhead)
  */
 
-/** Mirror of Inventory's response statuses (strings to avoid duplicating the enum). */
+// Mirror of Inventory's response statuses (as always, strings to avoid duplicating the enum)
 data class ReservationResult(val status: String, val replayed: Boolean)
 
-/** Mirror of Payments' response statuses. */
+// Mirror of Payments' response statuses
 data class AuthorizationResult(val status: String, val replayed: Boolean)
 
 interface InventoryGateway {
     fun reserve(orderId: String, productId: String, qty: Int): ReservationResult // place a hold on the seats
-    fun confirm(orderId: String, productId: String): ReservationResult           // turn the hold into a firm sale
-    fun release(orderId: String, productId: String): ReservationResult           // give the hold back (compensation)
+    fun confirm(orderId: String, productId: String): ReservationResult     // turn the hold into a firm sale
+    fun release(orderId: String, productId: String): ReservationResult     // give the hold back (compensation)
 }
 
 interface PaymentsGateway {
     fun authorize(orderId: String, amountCents: Long): AuthorizationResult // charge/authorize the payment
 }
 
-/** Shared bounded-timeout request factory: connect 2s, read 5s. */
+// Shared bounded-timeout request factory: connect 2s, read 5s
 private fun timeoutFactory() =
     JdkClientHttpRequestFactory(
         HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build(),
     ).apply { setReadTimeout(Duration.ofSeconds(5)) }
 
-/* Exact mirrors of the sibling services' response bodies (our own contracts). */
+// Exact mirrors of the sibling services' response bodies
 private data class InventoryReservationDto(
     val orderId: String,
     val productId: String,
@@ -59,8 +56,8 @@ private data class PaymentAuthorizationDto(
 
 @Component // registers this HTTP gateway as the production InventoryGateway bean
 class HttpInventoryGateway(
-    // In-cluster the env var points at the Service DNS (http://inventory:8080);
-    // the localhost default is for local multi-process dev.
+    // in-cluster the env var points at the Service DNS (http://inventory:8080)
+    // the localhost default is for local multi-process dev
     @Value("\${app.inventory-base-url}") baseUrl: String,
 ) : InventoryGateway {
 
