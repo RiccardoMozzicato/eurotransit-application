@@ -12,7 +12,7 @@ data class AuthorizationResponse(
     val orderId: String,
     val amountCents: Long,
     val status: AuthorizationStatus,
-    /** true when this call hit the idempotent replay path (retry/duplicate). */
+    // true when this call hit the idempotent replay path (retry/duplicate)
     val replayed: Boolean,
 )
 
@@ -20,16 +20,15 @@ private fun PaymentAuthorization.toResponse(replayed: Boolean = false) =
     AuthorizationResponse(id, orderId, amountCents, status, replayed)
 
 /**
- * Internal synchronous API, called by Orders inside its async pipeline ("an authorization
- * decision must be made now"). Not exposed through the public ingress.
+ * Internal synchronous API, called by Orders inside its async pipeline ("an authorization decision must be made now"). Not exposed through the public ingress
  *
- * As in Inventory: DECLINED is a 200 + status field, not an HTTP error — it is a business
- * answer the saga branches on; HTTP errors would trip the caller's retries and circuit
- * breaker for something that is not a failure.
+ * As in Inventory: DECLINED is a 200 + status field, not an HTTP error -> it is a business answer the saga branches on; HTTP errors would trip the caller's retries and circuit breaker for something that is not a failure
  */
+
 @RestController   // exposes this class as a REST controller (will return values as HTTP responses)
 
 @RequestMapping("/api/payments") // sets the base path for every endpoint defined in this controller
+
 class PaymentsController(private val service: PaymentsService) {
 
     // POST /api/payments/authorizations -> authorizes (or replays) a payment for an order
@@ -39,7 +38,7 @@ class PaymentsController(private val service: PaymentsService) {
         return outcome.authorization.toResponse(replayed = outcome.replayed)
     }
 
-    /** Inspection endpoint (demo / chaos verification: prove there is ONE charge per order). */
+    // Inspection endpoint (demo / chaos verification: prove there is ONE charge per order)
     // GET /api/payments/authorizations/{orderId} -> looks up the authorization for a single order
     @GetMapping("/authorizations/{orderId}")
     fun byOrder(@PathVariable orderId: String): AuthorizationResponse =

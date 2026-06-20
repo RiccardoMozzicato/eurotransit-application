@@ -10,11 +10,7 @@ import tools.jackson.databind.ObjectMapper
 import java.util.concurrent.TimeUnit
 
 /**
- * Outbound eventing port. payment-authorized is an INFORMATIONAL event (observability /
- * eventing requirement): the saga decision travels in the synchronous response to Orders,
- * so losing one of these events can never corrupt the money path. That is why a simple
- * after-commit publish is enough here, while Orders — whose events ARE load-bearing —
- * uses the transactional outbox instead.
+ * Outbound eventing port -> payment-authorized is an INFORMATIONAL event (observability / eventing requirement): the saga decision travels in the synchronous response to Orders, so losing 1 of these events can never corrupt the money path. That is why a simple after-commit publish is enough here, while Orders (whose events ARE load-bearing) uses the transactional outbox instead
  */
 interface EventPublisher {
     fun publish(topic: String, key: String, payload: Any)
@@ -24,8 +20,7 @@ interface EventPublisher {
 class EventPublishingConfig {
 
     /**
-     * Real Kafka publisher. Disabled with `events.publish.enabled=false` (used by tests,
-     * which have no broker: KafkaTemplate.send would block on metadata otherwise).
+     * Real Kafka publisher. Disabled with "events.publish.enabled=false" (used by tests, which have no broker: KafkaTemplate.send would block on metadata otherwise)
      */
     @Bean   // registers the returned object as a Spring-managed bean
     @ConditionalOnProperty(name = ["events.publish.enabled"], havingValue = "true", matchIfMissing = true)
@@ -33,14 +28,13 @@ class EventPublishingConfig {
         object : EventPublisher {
             private val log = LoggerFactory.getLogger("it.g03.payments.KafkaEventPublisher")
             override fun publish(topic: String, key: String, payload: Any) {
-                // Bounded wait (no unbounded hang, Pillar C); failures are logged, not
-                // propagated — informational events must never fail the business call.
+                // Bounded wait (no unbounded hang, Pillar C); failures are logged, not propagated because informational events must never fail the business call
                 runCatching { kafka.send(topic, key, om.writeValueAsString(payload)).get(5, TimeUnit.SECONDS) }
                     .onFailure { log.warn("failed to publish {} for key {}: {}", topic, key, it.message) }
             }
         }
 
-    /** No-op fallback when publishing is disabled (tests / broker-less local runs). */
+    /** No-op fallback when publishing is disabled (tests / broker-less local runs) */
     @Bean   // registers the returned object as a Spring-managed bean
     @ConditionalOnMissingBean(EventPublisher::class)
     fun noopEventPublisher(): EventPublisher = object : EventPublisher {

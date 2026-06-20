@@ -78,3 +78,17 @@ Brevi note sui singoli servizi:
 ### Esempio di flusso (orders)
 
 OrdersController (POST → 202) → `OrderService.placeOrder` (salva ordine + outbox in una transazione) → `OutboxPublisher` (relay → Kafka) → `OrderPlacedListener` (riceve l'evento) → `OrderSaga.handle` (reserve → authorize → confirm via Gateways) → `OrderStateMachine` (scrive le transizioni + outbox).
+
+
+### Transactional Outbox
+Ricorda che Orders usa il pattern Transactional Outbox per garantire che gli eventi vengano pubblicati solo se la transazione del DB ha successo (perchè gli eventi sono **load-bearing**). Questo evita problemi di consistenza tra il DB e i messaggi Kafka!
+
+Mentre invece i servizi Payments e Inventory pubblicano eventi informativi (**non load-bearing**) dopo la commit della transazione, senza usare l'outbox. Questo perché perdere un evento informativo non compromette la logica di business (quindi grazie a bounded wait, non ci sono unbound hang o ghost event)!
+
+In pratica il **transactional outbox** è un meccanismo che permette di scrivere eventi in una tabella del database all'interno della stessa transazione che modifica lo stato dell'applicazione. Un processo separato poi legge questa tabella e pubblica gli eventi su Kafka, garantendo che non vengano persi o duplicati.
+
+**Perché serve**: se il DB salva tutto ma Kafka fallisce, l’evento non si perde se la transazione fallisce, anche l’evento fallisce insieme ai dati quindi dati ed evento restano coerenti
+
+*P.S*:
+- **eventi non load-bearing**: possono essere perduti senza rompere il business, ma è comunque utile renderli idempotenti per evitare duplicati
+- **eventi load-bearing**: non basta l’idempotenza, serve l’outbox per non perderli tra DB e Kafka

@@ -79,8 +79,7 @@ class PaymentsServiceTest {
     // Verifies the "must not double-charge" race: concurrent duplicates of the same order commit exactly ONE charge
     @Test
     fun `concurrent duplicates of the SAME order charge exactly once`() {
-        // The "must not double-charge" race: 8 concurrent deliveries of the same
-        // authorize. UNIQUE(order_id) + same-transaction insert guarantee one commit.
+        // "must not double-charge" race: 8 concurrent deliveries of the same authorize. UNIQUE(order_id) + same-transaction insert guarantee one commit
         val start = CountDownLatch(1)
         val futures = (1..8).map {
             pool.submit(

@@ -5,12 +5,9 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * The idempotency record of "must not double-charge" (Pillar B).
+ * The idempotency record of "must not double-charge" (Pillar B)
  *
- * UNIQUE(order_id) means there can be AT MOST ONE authorization outcome per order:
- * a retried/duplicated authorize either finds this row (replay → return the stored
- * outcome, charge nothing) or loses the insert race and has its transaction rolled
- * back. Same proven pattern as Inventory's reservation record.
+ * UNIQUE(order_id) means there can be AT MOST ONE authorization outcome per order: a retried/duplicated authorize either finds this row (replay → return the stored outcome) or loses the insert race and has its transaction rolled back (same pattern as Inventory's reservation record)
  */
 
 @Entity   // maps this class to a database table (JPA persistent entity)
@@ -19,28 +16,28 @@ import java.util.UUID
     uniqueConstraints = [UniqueConstraint(name = "uq_payment_auth_order", columnNames = ["order_id"])],
 )
 data class PaymentAuthorization(
-    @Id   // primary key of the entity
+    @Id   // primary key of the entity (UUID is a good choice for idempotency records)
     val id: UUID = UUID.randomUUID(),
 
-    /** The idempotency key of the money path (one order → one payment). */
-    @Column(name = "order_id", nullable = false, length = 64)   // maps this field to a table column
+    // idempotency key of the money path (1 order → 1 payment)
+    @Column(name = "order_id", nullable = false, length = 64)   // maps this field to a column
     val orderId: String = "",
 
-    @Column(name = "amount_cents", nullable = false)   // maps this field to a table column
+    @Column(name = "amount_cents", nullable = false)   // maps this field to a column
     val amountCents: Long = 0,
 
-    @Enumerated(EnumType.STRING)   // store the enum by its name (AUTHORIZED/DECLINED), not its ordinal
-    @Column(nullable = false, length = 16)   // maps this field to a table column
+    @Enumerated(EnumType.STRING)   // store enum by its name (AUTHORIZED/DECLINED), not its ordinal
+    @Column(nullable = false, length = 16)   // maps this field to a column
     val status: AuthorizationStatus = AuthorizationStatus.AUTHORIZED,
 
-    @Column(name = "created_at", nullable = false)   // maps this field to a table column
+    @Column(name = "created_at", nullable = false)   // maps this field to a column
     val createdAt: Instant = Instant.now(),
 )
 
 enum class AuthorizationStatus {
-    /** Terminal: the (mock) PSP authorized the charge. */
+    /** Terminal: PSP authorized the charge */
     AUTHORIZED,
 
-    /** Terminal: the (mock) PSP declined — a BUSINESS outcome, not a transport failure. */
+    /** Terminal: PSP declined -> a BUSINESS outcome (a valid value), not a transport failure */
     DECLINED,
 }

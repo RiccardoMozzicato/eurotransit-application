@@ -10,10 +10,10 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.Instant
 import java.util.UUID
 
-/** Outcome of an authorize call; `replayed = true` means the idempotent replay path fired. */
+// Outcome of an authorize call; "replayed = true" means the idempotent replay path fired
 data class AuthorizeOutcome(val authorization: PaymentAuthorization, val replayed: Boolean)
 
-/** payment-authorized event payload (informational; see EventPublishing.kt). */
+// payment-authorized event payload (informational; see EventPublishing.kt)
 data class PaymentAuthorizedEvent(
     val eventId: UUID = UUID.randomUUID(),
     val orderId: String,
@@ -27,27 +27,22 @@ class PaymentsService(
     private val events: EventPublisher,
     private val meterRegistry: MeterRegistry,
     /**
-     * Mock-PSP decision rule, deliberately deterministic and demo-controllable:
-     * amounts >= this threshold are DECLINED ("insufficient funds"). Lets us exercise the
-     * saga compensation path (release reservation) on demand: order a huge qty → decline.
+     * (mock) PSP decision rule, deliberately deterministic and demo-controllable: amounts >= this threshold are DECLINED ("insufficient funds"); lets us exercise the saga compensation path (release reservation) on demand: order a huge qty → decline
      */
-    @Value("\${payments.decline-threshold-cents:100000}") private val declineThresholdCents: Long,   // injects the configured threshold (with a default) from the environment/config
+    @Value("\${payments.decline-threshold-cents:100000}") private val declineThresholdCents: Long,   // injects configured threshold (with a default debug value here) from the env/config
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    // Helper that increments the per-outcome counter (authorized/declined/replayed) for observability
+    // Helper to increments the per-outcome counter (authorized/declined/replayed) for observability
     private fun outcomes(outcome: String) =
         meterRegistry.counter("payments_authorizations_total", "outcome", outcome)
 
     /**
-     * STRICT idempotency ("must not double-charge", Pillar B) — same proven pattern as
-     * Inventory.reserve:
-     * - fast path: an authorization for this orderId exists → return the STORED outcome,
-     *   charge nothing (a retried call is a no-op);
-     * - race path: two duplicates miss the pre-check concurrently → both would charge,
-     *   but UNIQUE(order_id) lets exactly ONE insert commit; the loser's transaction
-     *   (charge included) rolls back, and its retry replays the stored outcome.
+     * STRICT idempotency ("mustn't double-charge", Pillar B) -> same pattern as Inventory.reserve:
+     * - fast path: an authorization for this orderId exists -> return the STORED outcome, charge nothing (a retried call is a no-op);
+     * - race path: two duplicates miss the pre-check concurrently -> both would charge, but UNIQUE(order_id) lets exactly ONE insert commit; the loser's transaction (charge included) rolls back, and its retry replays the stored outcome
      */
+
     @Transactional   // run the whole method in a single database transaction (all-or-nothing)
     fun authorize(orderId: String, amountCents: Long): AuthorizeOutcome {
         require(amountCents > 0) { "amountCents must be positive" }
@@ -58,9 +53,8 @@ class PaymentsService(
             return AuthorizeOutcome(it, replayed = true)
         }
 
-        // The "external PSP call" is mocked by a deterministic rule (the track grades
-        // interaction patterns, not payment realism). Chaos/latency experiments inject
-        // failures at the network level, not here.
+        // We do not call a real payment provider here. Instead, a simple fixed rule decides the result: amounts above the threshold are declined, and smaller amounts are approved.
+        // This keeps the demo predictable; chaos and latency tests add failures at the network level (not here)
         val status =
             if (amountCents >= declineThresholdCents) AuthorizationStatus.DECLINED
             else AuthorizationStatus.AUTHORIZED
@@ -86,8 +80,7 @@ class PaymentsService(
             ?: throw NoSuchElementException("no authorization for order=$orderId")
 
     /**
-     * Publish only AFTER the surrounding transaction commits: publishing inside the
-     * transaction could announce an authorization that then rolls back (ghost event).
+     * Publish only AFTER the surrounding transaction commits: publishing inside the transaction could announce an authorization that then rolls back (ghost event)
      */
     private fun publishAfterCommit(topic: String, key: String, payload: Any) {
         TransactionSynchronizationManager.registerSynchronization(
