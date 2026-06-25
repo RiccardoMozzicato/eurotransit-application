@@ -33,7 +33,9 @@ Il prof inquadra la resilienza così — tenerlo a mente in ogni scelta:
 
 ---
 
-## 1. Circuit Breaker Orders→Payments + stato `PAYMENT_PENDING`  *(KEYSTONE)*
+## 1. Circuit Breaker Orders→Payments + stato `PAYMENT_PENDING`  *(KEYSTONE)* — ✅ FATTO (2026-06-25)
+
+> **Stato: IMPLEMENTATO e testato** (20/20 test verdi nel servizio `orders`). Decorazione **programmatica** del breaker via `CircuitBreakerRegistry` (non l'annotazione AOP, rischio Boot 4 — vedi `docs/agent-log.md` #2/#7); fallback `PAYMENT_PENDING`; `OrderRecoverySweeper` con bounded-park money-safe; `@Version` + migration V2 contro eventi duplicati. Difetti del primo cut (4xx park-infinito, money-leak allargato, batch-abort, @Version non testato) trovati da review adversarial e corretti — vedi `agent-log.md` #7. Restano §2/§3/§4.
 
 Obiettivo: quando Payments è giù/lento, **contenere** il guasto (non propagarlo). L'ordine viene **parcheggiato** in `PAYMENT_PENDING` e ripreso quando il breaker richiude.
 

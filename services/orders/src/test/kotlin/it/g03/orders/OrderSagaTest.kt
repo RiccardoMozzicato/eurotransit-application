@@ -21,6 +21,7 @@ import kotlin.test.assertTrue
         "events.publish.enabled=false",     // no broker in tests
         "app.kafka-listeners-enabled=false", // saga is driven directly, not via Kafka
         "app.outbox.enabled=false",          // no background relay racing the assertions
+        "app.recovery.enabled=false",        // no recovery sweep racing the assertions
     ],
 )
 
@@ -169,5 +170,59 @@ class OrderSagaTest {
         assertEquals(eventsAfterFirstRun, outbox.count(), "no duplicate outbox events")
         assertEquals(reserveCallsAfterFirstRun, inventory.reserveCalls, "no downstream calls on replay")
         assertEquals(OrderStatus.CONFIRMED, orders.findById(order.id).orElseThrow().status)
+    }
+
+    // Verifies resilience (Pillar C): when Payments is UNAVAILABLE (circuit breaker open) the order is PARKED in PAYMENT_PENDING — not rejected, hold NOT released — and a later retry (breaker closed) drives it to CONFIRMED without repeating the reservation
+    @Test
+    fun `payments unavailable - order is PARKED PAYMENT_PENDING then CONFIRMED on retry`() {
+        payments.status = "UNAVAILABLE" // simulates the gateway's circuit-breaker fallback
+        val order = orderService.placeOrder("TRENO-TEST", 1)
+
+        saga.handle(order.id)
+
+        val parked = orders.findById(order.id).orElseThrow()
+        assertEquals(OrderStatus.PAYMENT_PENDING, parked.status, "an unavailable Payments must park, not reject")
+        assertEquals(null, parked.reason, "parking is not a rejection")
+        assertTrue(inventory.released.isEmpty(), "the seats stay held while parked (no compensation)")
+
+        // Payments recovers; in production OrderRecoverySweeper re-drives the saga
+        payments.status = "AUTHORIZED"
+        saga.handle(order.id)
+
+        val confirmed = orders.findById(order.id).orElseThrow()
+        assertEquals(OrderStatus.CONFIRMED, confirmed.status)
+        assertEquals(1, inventory.reserveCalls, "reserve is not repeated on the retry (resumed from PAYMENT_PENDING)")
+    }
+
+    // Verifies the recovery-loop reality: a SECOND consecutive UNAVAILABLE keeps the order PARKED (markPaymentPending is a no-op from PAYMENT_PENDING), reserve is never repeated, and a later AUTHORIZED still confirms
+    @Test
+    fun `repeated UNAVAILABLE keeps the order PARKED, then CONFIRMS when payments returns`() {
+        payments.status = "UNAVAILABLE"
+        val order = orderService.placeOrder("TRENO-TEST", 1)
+
+        saga.handle(order.id) // park
+        saga.handle(order.id) // still unavailable -> stays parked (no-op re-park)
+
+        assertEquals(OrderStatus.PAYMENT_PENDING, orders.findById(order.id).orElseThrow().status)
+        assertEquals(1, inventory.reserveCalls, "reserve is not repeated while parked")
+
+        payments.status = "AUTHORIZED"
+        saga.handle(order.id)
+
+        assertEquals(OrderStatus.CONFIRMED, orders.findById(order.id).orElseThrow().status)
+        assertEquals(1, inventory.reserveCalls, "reserve still called exactly once across the whole recovery")
+    }
+
+    // Verifies the defensive branch: an UNEXPECTED authorization status must never CONFIRM — it parks (safe) rather than confirm a seat we may not have paid for
+    @Test
+    fun `unexpected authorization status - order is PARKED, never CONFIRMED`() {
+        payments.status = "WAT" // not AUTHORIZED / DECLINED / UNAVAILABLE
+        val order = orderService.placeOrder("TRENO-TEST", 1)
+
+        saga.handle(order.id)
+
+        val parked = orders.findById(order.id).orElseThrow()
+        assertEquals(OrderStatus.PAYMENT_PENDING, parked.status, "an unknown status must park, never confirm")
+        assertTrue(inventory.released.isEmpty(), "nothing to compensate on a parked order")
     }
 }

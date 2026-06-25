@@ -1,8 +1,13 @@
 package it.g03.orders
 
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry
+import io.micrometer.core.instrument.MeterRegistry
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.client.JdkClientHttpRequestFactory
 import org.springframework.stereotype.Component
+import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClient
 import java.net.http.HttpClient
 import java.time.Duration
@@ -95,17 +100,47 @@ class HttpInventoryGateway(
 @Component // registers this HTTP gateway as the production PaymentsGateway bean
 class HttpPaymentsGateway(
     @Value("\${app.payments-base-url}") baseUrl: String,
+    // The circuit breaker is applied PROGRAMMATICALLY through the registry, NOT via the @CircuitBreaker annotation: the resilience4j starter targets Spring Boot 3, so the AOP aspect might not weave on Boot 4 (docs/agent-log.md #2) — but the CircuitBreakerRegistry bean is verified to bind (OrdersApplicationTests), so decorating through it is deterministic. Config: resilience4j.circuitbreaker.instances.payments in application.yml
+    registry: CircuitBreakerRegistry,
+    private val meterRegistry: MeterRegistry,
 ) : PaymentsGateway {
 
+    private val log = LoggerFactory.getLogger(javaClass)
     private val client = RestClient.builder().baseUrl(baseUrl).requestFactory(timeoutFactory()).build()
+    private val breaker = registry.circuitBreaker("payments") // single-arg form: returns the instance pre-built from the "payments" config
 
-    // POST /api/payments/authorizations -> authorize the charge for this order (idempotent)
-    override fun authorize(orderId: String, amountCents: Long): AuthorizationResult {
-        val dto = client.post()
-            .uri("/api/payments/authorizations")
-            .body(mapOf("orderId" to orderId, "amountCents" to amountCents))
-            .retrieve()
-            .body(PaymentAuthorizationDto::class.java)!!
-        return AuthorizationResult(dto.status, dto.replayed)
+    // Outcome-tagged failure counter for the Orders->Payments call (Pillar D, same idiom as InventoryService.outcomes): outcome = unavailable | client_error
+    private fun failures(outcome: String) = meterRegistry.counter("orders_payment_failures_total", "outcome", outcome)
+
+    // POST /api/payments/authorizations -> authorize the charge for this order (idempotent on the Payments side)
+    override fun authorize(orderId: String, amountCents: Long): AuthorizationResult =
+        try {
+            // executeCallable records transport faults (connect/read timeout, 5xx) as breaker failures and rethrows them; when the breaker is OPEN it throws CallNotPermittedException WITHOUT calling Payments (fast-fail). A DECLINED is a normal 200 body, so it returns here cleanly and never trips the breaker — declining a card is a business outcome, not a fault
+            breaker.executeCallable {
+                val dto = client.post()
+                    .uri("/api/payments/authorizations")
+                    .body(mapOf("orderId" to orderId, "amountCents" to amountCents))
+                    .retrieve()
+                    .body(PaymentAuthorizationDto::class.java)!!
+                AuthorizationResult(dto.status, dto.replayed)
+            }
+        } catch (e: CallNotPermittedException) {
+            // breaker OPEN: the call was short-circuited, Payments was not hit
+            unavailable(orderId, "circuit breaker open")
+        } catch (e: HttpClientErrorException) {
+            // A 4xx is a PERMANENT, deterministic client error (malformed / unprocessable authorization request), NOT a transient fault — retrying it would park the order forever. It is in the breaker's ignore-exceptions so it never trips the breaker; here we drive the order to a TERMINAL outcome instead of UNAVAILABLE. No charge happens on a 4xx, so mapping it to DECLINED is money-safe (the saga releases the hold and rejects)
+            log.warn("payments rejected order {} with client error {} — terminal DECLINED", orderId, e.statusCode)
+            failures("client_error").increment()
+            AuthorizationResult("DECLINED", false)
+        } catch (e: Exception) {
+            // genuine transport fault recorded by the breaker above (connect/read timeout, 5xx, connection refused): map to the fallback so the saga parks the order
+            unavailable(orderId, e.message ?: e.javaClass.simpleName)
+        }
+
+    // Circuit-breaker fallback: the saga maps "UNAVAILABLE" to the PAYMENT_PENDING parking state — it does NOT reject the order and does NOT propagate the fault (Pillar C: contain, don't propagate). Emitting a metric keeps the policy observable (deck 10)
+    private fun unavailable(orderId: String, reason: String): AuthorizationResult {
+        log.warn("payments unavailable for order {} ({}) — parking PAYMENT_PENDING", orderId, reason)
+        failures("unavailable").increment()
+        return AuthorizationResult("UNAVAILABLE", false)
     }
 }
