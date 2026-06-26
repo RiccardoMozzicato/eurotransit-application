@@ -1,6 +1,7 @@
 package it.g03.orders
 
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -24,6 +25,7 @@ import kotlin.test.assertEquals
         "app.recovery.enabled=false",
     ],
 )
+@Tag("chaos-03") // anticipates chaos #3 (node-disruption): two pods racing a terminal transition emit exactly one event
 class OrderVersionConcurrencyTest {
 
     @Autowired lateinit var stateMachine: OrderStateMachine

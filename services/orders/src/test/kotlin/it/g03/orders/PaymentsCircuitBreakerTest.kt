@@ -5,6 +5,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -59,6 +60,7 @@ class PaymentsCircuitBreakerTest {
         assertEquals(50f, cfg.slowCallRateThreshold)
     }
 
+    @Tag("chaos-01") // anticipates chaos #1 (payments-latency): sustained slow calls open the breaker, fast-fail
     @Test
     fun `breaker opens after the configured failures, short-circuits, then recovers via half-open`() {
         val cb = registry.circuitBreaker("payments")

@@ -2,6 +2,7 @@ package it.g03.payments
 
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -19,6 +20,7 @@ import kotlin.test.assertTrue
         "events.publish.enabled=false",
     ],
 )
+@Tag("chaos-02") // anticipates chaos #2 (inventory-podkill / redelivery): a retried/duplicated authorize charges once; void idempotent
 class PaymentsServiceTest {
 
     // Injects the service under test

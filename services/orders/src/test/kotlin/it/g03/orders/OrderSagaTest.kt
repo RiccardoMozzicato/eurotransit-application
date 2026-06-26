@@ -1,6 +1,7 @@
 package it.g03.orders
 
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -140,6 +141,7 @@ class OrderSagaTest {
 
     // Verifies error-path: a declined payment triggers the compensation (release) and rejects with PAYMENT_DECLINED
     @Test
+    @Tag("chaos-02")
     fun `payment declined - reservation is RELEASED (compensation) and order REJECTED`() {
         payments.status = "DECLINED"
         val order = orderService.placeOrder("TRENO-TEST", 1)
@@ -155,6 +157,7 @@ class OrderSagaTest {
     // Verifies error-path + compensation (Fase 2 #4, test 5.4): a hold that expired AFTER authorize must VOID the charge
     // BEFORE rejecting with RESERVATION_EXPIRED — closing the saga invariant "no charge without a seat"
     @Test
+    @Tag("chaos-02")
     fun `hold expired after authorize - charge is VOIDED (compensation) then order REJECTED(RESERVATION_EXPIRED)`() {
         inventory.confirmStatus = "EXPIRED"
         val order = orderService.placeOrder("TRENO-TEST", 1)
@@ -170,6 +173,7 @@ class OrderSagaTest {
     // Verifies resilience (Fase 2 #4, Option B): if the VOID itself fails (Payments down / breaker open) the order must NOT
     // go terminal with a live charge — it is PARKED so the recovery sweep retries the void; once the void succeeds it REJECTS
     @Test
+    @Tag("chaos-02")
     fun `void fails - order is PARKED (not rejected) then REJECTED(RESERVATION_EXPIRED) once the void succeeds`() {
         inventory.confirmStatus = "EXPIRED"
         payments.voidStatus = "UNAVAILABLE" // the storno cannot complete now
@@ -195,6 +199,7 @@ class OrderSagaTest {
     // Verifies the crash-window branch (Fase 2 #4): if a prior pass voided the charge but crashed before the reject, the
     // replayed authorize returns VOIDED — the saga must finish the rejection, NOT mis-park as an "unexpected status"
     @Test
+    @Tag("chaos-02")
     fun `authorize replays VOIDED (crash after void) - order REJECTED(RESERVATION_EXPIRED), never PARKED`() {
         payments.status = "VOIDED" // a replayed authorize of an already-voided charge
         val order = orderService.placeOrder("TRENO-TEST", 1)
@@ -223,6 +228,7 @@ class OrderSagaTest {
 
     // Verifies resilience (Pillar C): when Payments is UNAVAILABLE (circuit breaker open) the order is PARKED in PAYMENT_PENDING — not rejected, hold NOT released — and a later retry (breaker closed) drives it to CONFIRMED without repeating the reservation
     @Test
+    @Tag("chaos-01")
     fun `payments unavailable - order is PARKED PAYMENT_PENDING then CONFIRMED on retry`() {
         payments.status = "UNAVAILABLE" // simulates the gateway's circuit-breaker fallback
         val order = orderService.placeOrder("TRENO-TEST", 1)
@@ -245,6 +251,7 @@ class OrderSagaTest {
 
     // Verifies the recovery-loop reality: a SECOND consecutive UNAVAILABLE keeps the order PARKED (markPaymentPending is a no-op from PAYMENT_PENDING), reserve is never repeated, and a later AUTHORIZED still confirms
     @Test
+    @Tag("chaos-01")
     fun `repeated UNAVAILABLE keeps the order PARKED, then CONFIRMS when payments returns`() {
         payments.status = "UNAVAILABLE"
         val order = orderService.placeOrder("TRENO-TEST", 1)
@@ -264,6 +271,7 @@ class OrderSagaTest {
 
     // Verifies the defensive branch: an UNEXPECTED authorization status must never CONFIRM — it parks (safe) rather than confirm a seat we may not have paid for
     @Test
+    @Tag("chaos-01")
     fun `unexpected authorization status - order is PARKED, never CONFIRMED`() {
         payments.status = "WAT" // not AUTHORIZED / DECLINED / UNAVAILABLE
         val order = orderService.placeOrder("TRENO-TEST", 1)

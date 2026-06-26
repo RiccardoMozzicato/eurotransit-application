@@ -2,6 +2,7 @@ package it.g03.orders
 
 import io.github.resilience4j.bulkhead.BulkheadRegistry
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -23,6 +24,7 @@ import kotlin.test.assertTrue
         "app.recovery.enabled=false",
     ],
 )
+@Tag("chaos-01") // anticipates chaos #1 (payments-latency): a saturated payments bulkhead leaves inventory permits intact
 class BulkheadIsolationTest {
 
     @Autowired private lateinit var bulkheads: BulkheadRegistry

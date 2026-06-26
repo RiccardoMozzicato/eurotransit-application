@@ -1,6 +1,7 @@
 package it.g03.orders
 
 import io.micrometer.core.instrument.MeterRegistry
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -32,6 +33,7 @@ import kotlin.test.assertTrue
         "resilience4j.ratelimiter.instances.orders-intake.timeout-duration=PT0S",
     ],
 )
+@Tag("chaos-03") // anticipates chaos #3 (node-disruption): under reduced capacity the intake sheds 429 instead of collapsing
 class OrdersIntakeRateLimiterTest {
 
     // Injects the controller under test (driven directly, as in CatalogControllerTest)

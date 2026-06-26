@@ -2,6 +2,7 @@ package it.g03.inventory
 
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -17,7 +18,8 @@ import kotlin.test.assertTrue
  * N concurrent transactions race for 1 remaining seat: the atomic conditional UPDATE must let EXACTLY ONE win, regardless of interleaving. This is the in-process proof of the invariant; the chaos experiment later reproduces it under pod kill in the cluster
  */
 
-@SpringBootTest(properties = ["spring.kafka.bootstrap-servers=localhost:9092", "events.publish.enabled=false"])  // boot the full Spring app context to test the concurrent reserve wiring end-to-end
+@SpringBootTest(properties = ["spring.kafka.bootstrap-servers=localhost:9092", "events.publish.enabled=false", "inventory.reservation.enabled=false"])  // boot the full Spring app context; reconciler sweep OFF so it never races the seat-count assertions (#5.5)
+@Tag("chaos-02") // anticipates chaos #2 (inventory-podkill): concurrent/redelivered ops never oversell, restock once
 class InventoryConcurrencyTest {
 
     // Injects the service under test

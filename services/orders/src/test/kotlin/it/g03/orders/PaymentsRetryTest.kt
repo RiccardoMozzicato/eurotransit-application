@@ -1,6 +1,7 @@
 package it.g03.orders
 
 import io.github.resilience4j.retry.RetryRegistry
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -26,6 +27,7 @@ import kotlin.test.assertFailsWith
         "app.recovery.enabled=false",
     ],
 )
+@Tag("chaos-01") // anticipates chaos #1 (payments-latency): a transient blip is absorbed by retry, never trips the breaker
 class PaymentsRetryTest {
 
     @Autowired private lateinit var retries: RetryRegistry

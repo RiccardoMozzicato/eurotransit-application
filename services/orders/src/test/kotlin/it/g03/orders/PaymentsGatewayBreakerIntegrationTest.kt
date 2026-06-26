@@ -4,6 +4,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -26,6 +27,7 @@ import kotlin.test.assertTrue
         "app.payments-base-url=http://localhost:1", // unused/privileged port -> every call fails fast (connection refused)
     ],
 )
+@Tag("chaos-01") // anticipates chaos #1 (payments-latency): real gateway opens the breaker + fast-fails to UNAVAILABLE
 class PaymentsGatewayBreakerIntegrationTest {
 
     @Autowired

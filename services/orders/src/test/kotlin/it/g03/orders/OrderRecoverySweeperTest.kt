@@ -1,6 +1,7 @@
 package it.g03.orders
 
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -25,6 +26,7 @@ import kotlin.test.assertTrue
         "app.recovery.max-park=PT0S",
     ],
 )
+@Tag("chaos-01") // anticipates chaos #1 (payments-latency): a parked order drains/bounds once Payments heals
 class OrderRecoverySweeperTest {
 
     @TestConfiguration // swap the HTTP gateways for the steerable fakes (reused from OrderSagaTest)

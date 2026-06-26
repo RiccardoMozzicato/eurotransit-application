@@ -229,7 +229,19 @@ Obiettivo: chiudere il buco del saga — se la prenotazione è scaduta dopo l'ad
 
 ---
 
-## 5. Test funzionali della resilienza
+## 5. Test funzionali della resilienza — ✅ FATTO (2026-06-26)
+
+> **Stato: COMPLETO** (62 test verdi sui 5 servizi). Gran parte costruita **interleaved** con #1-#4; una gap-analysis
+> a 3 lenti + verifica manuale ha confermato 4/6 criteri già coperti e chiuso i 3 gap residui. **5.1** CB funzionale →
+> `PaymentsCircuitBreakerTest` (OPEN→short-circuit→half-open→CLOSED deterministico + 5 soglie yml non-default pinnate;
+> + `PaymentsGatewayBreakerIntegrationTest`). **5.2** parking/recovery → `OrderSagaTest`. **5.3** retry+idempotenza →
+> **nuovo** `PaymentsRetryIdempotencyIntegrationTest` (stub idempotente + risposta persa post-commit → ritrasmissione →
+> **1 solo addebito**; **falsificabile**: senza dedup diventa rosso) che cabla il legame slide-22 in un solo flusso
+> (prima provato solo per composizione). **5.4** compensazione → `OrderSagaTest` (void-before-reject). **5.5** gating →
+> orders già completo (14/14 `app.recovery.enabled=false`); chiuso il buco **inventory**: aggiunto enabled-gate a
+> `ReservationReconciler` (mirror di `OrderRecoverySweeper`) + `inventory.reservation.enabled=false` nei 3 test inventory
+> (race-free per gating, non più per timing). **5.6** tracciabilità → `capstone-configuration-g03/docs/chaos/test-traceability.md`
+> (mappa ogni test → esperimento 01-05 + ipotesi condivisa) + `@Tag("chaos-NN")` sui test mappati. Vedi `agent-log.md` se emergono note.
 
 Obiettivo del prof: **provare il comportamento**, non l'esistenza dei bean. Ogni test = un'ipotesi verificabile (metodo scientifico del chaos, slide 41).
 
