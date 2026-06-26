@@ -1,5 +1,6 @@
 package it.g03.orders
 
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -7,6 +8,7 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Proves OrderRecoverySweeper's money-safety: an order parked beyond app.recovery.max-park is rejected
@@ -37,6 +39,15 @@ class OrderRecoverySweeperTest {
     @Autowired lateinit var orders: OrderRepository
     @Autowired lateinit var payments: OrderSagaTest.FakePayments
 
+    @BeforeEach // the fakes are singleton beans shared across test methods — reset their steerable state each test
+    fun cleanSlate() {
+        orders.deleteAll()
+        payments.status = "AUTHORIZED"
+        payments.voidStatus = "VOIDED"
+        payments.authorizeCalls = 0
+        payments.voided.clear()
+    }
+
     @Test
     fun `an order parked beyond max-park is REJECTED without charging`() {
         val order = orderService.placeOrder("TRENO-TEST", 1)
@@ -50,5 +61,24 @@ class OrderRecoverySweeperTest {
         assertEquals(OrderStatus.REJECTED, swept.status, "a hold parked past its TTL must be rejected, not retried")
         assertEquals(RejectionReason.RESERVATION_EXPIRED, swept.reason)
         assertEquals(0, payments.authorizeCalls, "money-safe: the card is NOT charged for an expired hold")
+    }
+
+    // Verifies MAJOR-2 (Option B park-and-retry): at the max-park boundary, if the void cannot complete because Payments
+    // is unreachable, the order must NOT go terminal (a possibly-live charge would be abandoned) — it stays PAYMENT_PENDING
+    // and the void is retried next sweep. Money-safety over bounded retention; it drains once Payments recovers.
+    @Test
+    fun `parked order whose void is UNAVAILABLE stays PAYMENT_PENDING (retried, not abandoned)`() {
+        val order = orderService.placeOrder("TRENO-TEST", 1)
+        stateMachine.markReserved(order.id)
+        stateMachine.markPaymentPending(order.id)
+        payments.voidStatus = "UNAVAILABLE" // the storno cannot complete now
+
+        sweeper.sweepOnce()
+
+        val swept = orders.findById(order.id).orElseThrow()
+        assertEquals(OrderStatus.PAYMENT_PENDING, swept.status, "an unreachable void must keep the order parked, never abandon a possible live charge")
+        assertEquals(null, swept.reason, "still parked, not rejected")
+        assertTrue(payments.voided.isNotEmpty(), "the void was attempted")
+        assertEquals(0, payments.authorizeCalls, "money-safe: never re-authorizes at the expiry boundary")
     }
 }

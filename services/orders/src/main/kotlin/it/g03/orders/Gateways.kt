@@ -33,6 +33,7 @@ interface InventoryGateway {
 
 interface PaymentsGateway {
     fun authorize(orderId: String, amountCents: Long): AuthorizationResult // charge/authorize the payment
+    fun void(orderId: String): AuthorizationResult                          // reverse the charge (saga compensation, idempotent)
 }
 
 // Shared bounded-timeout request factory: connect 2s, read 5s
@@ -144,9 +145,51 @@ class HttpPaymentsGateway(
             unavailable(orderId, e.message ?: e.javaClass.simpleName)
         }
 
+    // POST /api/payments/authorizations/{orderId}/void -> reverse the charge (saga compensation for a hold that expired
+    // AFTER authorize, Fase 2 #4). Wrapped in the SAME "payments" policy as authorize (Retry(CircuitBreaker(Bulkhead)))
+    // because it hits the same downstream and is idempotent (slide 22). The fallback ladder mirrors authorize EXACTLY,
+    // keeping the outcome tags distinct (local saturation vs downstream-down) so a dashboard can still tell them apart
+    override fun void(orderId: String): AuthorizationResult =
+        try {
+            resilience.callWithBreaker("payments") {
+                val dto = client.post()
+                    .uri("/api/payments/authorizations/{orderId}/void", orderId)
+                    .retrieve()
+                    .body(PaymentAuthorizationDto::class.java)!!
+                AuthorizationResult(dto.status, dto.replayed)
+            }
+        } catch (e: CallNotPermittedException) {
+            voidUnavailable(orderId, "circuit breaker open")
+        } catch (e: BulkheadFullException) {
+            voidUnavailable(orderId, "payments bulkhead full", "bulkhead_full")
+        } catch (e: HttpClientErrorException) {
+            if (e.statusCode.value() == 404) {
+                // No authorization on record -> there is no charge to reverse: a BENIGN outcome (e.g. a void of an order
+                // that never authorized), NOT a failed compensation. The saga treats NOT_FOUND like a successful no-op
+                log.warn("payments void for order {} -> 404 (no authorization to reverse)", orderId)
+                AuthorizationResult("NOT_FOUND", false)
+            } else {
+                // Any other 4xx is a permanent, deterministic client error on the void itself -> terminal FAILED (the
+                // saga keeps the order parked so the recovery sweep retries; a 4xx will not self-heal, but it is rare)
+                log.warn("payments void rejected order {} with client error {} — FAILED", orderId, e.statusCode)
+                failures("client_error").increment()
+                AuthorizationResult("FAILED", false)
+            }
+        } catch (e: Exception) {
+            voidUnavailable(orderId, e.message ?: e.javaClass.simpleName)
+        }
+
     // Circuit-breaker fallback: the saga maps "UNAVAILABLE" to the PAYMENT_PENDING parking state — it does NOT reject the order and does NOT propagate the fault (Pillar C: contain, don't propagate). Emitting a metric keeps the policy observable (deck 10). [outcome] tags the cause (unavailable = transport fault / breaker open; bulkhead_full = local saturation)
     private fun unavailable(orderId: String, reason: String, outcome: String = "unavailable"): AuthorizationResult {
         log.warn("payments unavailable for order {} ({}) — parking PAYMENT_PENDING", orderId, reason)
+        failures(outcome).increment()
+        return AuthorizationResult("UNAVAILABLE", false)
+    }
+
+    // Same as [unavailable] but for the void compensation: the saga keeps the order PARKED so [OrderRecoverySweeper]
+    // retries the void (Fase 2 #4, Option B). The charge stays live but is actively retried, not abandoned
+    private fun voidUnavailable(orderId: String, reason: String, outcome: String = "unavailable"): AuthorizationResult {
+        log.warn("payments void unavailable for order {} ({}) — compensation deferred to recovery sweep", orderId, reason)
         failures(outcome).increment()
         return AuthorizationResult("UNAVAILABLE", false)
     }

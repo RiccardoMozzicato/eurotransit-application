@@ -30,7 +30,9 @@ class ReservationReconciler(
     @Value("\${inventory.reservation.sweep-interval}") private val sweepInterval: Duration,
 ) : DisposableBean {
     private val log = LoggerFactory.getLogger(javaClass)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // Dispatchers.IO: the sweep does BLOCKING work (JPA via the @Transactional service), which belongs on the elastic
+    // IO pool, not the CPU-bound Default pool (deck 06 blocking-vs-suspending). Matches OrderRecoverySweeper (orders)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // starts the sweep loop once the app context is fully up (not before beans are ready)
     @EventListener(ApplicationReadyEvent::class)

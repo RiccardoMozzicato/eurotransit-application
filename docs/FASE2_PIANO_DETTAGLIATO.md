@@ -185,7 +185,22 @@ Obiettivo: sotto sovraccarico, rifiutare lavoro in modo controllato invece di ac
 
 ---
 
-## 4. Compensazione refund/void per `RESERVATION_EXPIRED`
+## 4. Compensazione refund/void per `RESERVATION_EXPIRED` — ✅ FATTO (2026-06-26)
+
+> **Stato: IMPLEMENTATO e testato** (orders 31/31, payments 11/11 verdi). Void = **transizione idempotente
+> `AUTHORIZED → VOIDED`** sull'aggregato Payments esistente (`PaymentsService.void` + `POST
+> /api/payments/authorizations/{orderId}/void`), **non** una tabella reversal; **nessuna migration** (`VOIDED`
+> entra in `status VARCHAR(16)` senza CHECK); **nessun evento** (eventi Payments best-effort, nessun consumer).
+> Il gateway `payments.void` riusa l'istanza R4j `payments` (breaker+bulkhead+retry) con la **stessa ladder
+> fallback a 4 rami** di `authorize` (404→`NOT_FOUND` benigno). **Void fallito = Opzione B (decisione team):** non
+> si rigetta con addebito vivo — si **parcheggia** (`PAYMENT_PENDING`) e `OrderRecoverySweeper` ri-guida la saga e
+> **ritenta il void** fino a `VOIDED`. Anche al confine `max-park` il sweep rigetta solo a money-state risolto
+> (`VOIDED`/`NOT_FOUND`/`DECLINED`), altrimenti (Payments irraggiungibile) **resta parcheggiato e ritenta**
+> (`orders_recovery_total{outcome=void_retry}`) — money-safety sopra la bounded-retention (audit, `agent-log.md` #11).
+> Ramo stage-2 `"VOIDED" → reject(RESERVATION_EXPIRED)` per la crash-window. Metriche:
+> `orders_compensations_total{type="refund"}` + `payments_voids_total{outcome}`. Lost-update guard (`@Version`)
+> differito (money-safe senza, manterrebbe migration-free). Il primo design (reject-always + contatore) **osservava**
+> solo il leak: colto da review avversariale a 3 lenti → vedi `docs/agent-log.md` #9. Restano #5 (test) e #6/#7.
 
 Obiettivo: chiudere il buco del saga — se la prenotazione è scaduta dopo l'addebito, va stornato.
 

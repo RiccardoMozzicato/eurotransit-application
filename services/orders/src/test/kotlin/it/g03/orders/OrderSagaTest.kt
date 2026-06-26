@@ -46,10 +46,16 @@ class OrderSagaTest {
 
     class FakePayments : PaymentsGateway {
         var status = "AUTHORIZED"
+        var voidStatus = "VOIDED"
         var authorizeCalls = 0
+        val voided = mutableListOf<String>()
         override fun authorize(orderId: String, amountCents: Long): AuthorizationResult {
             authorizeCalls++
             return AuthorizationResult(status, false)
+        }
+        override fun void(orderId: String): AuthorizationResult {
+            voided += orderId
+            return AuthorizationResult(voidStatus, false)
         }
     }
 
@@ -81,7 +87,9 @@ class OrderSagaTest {
         inventory.reserveCalls = 0
         inventory.released.clear()
         payments.status = "AUTHORIZED"
+        payments.voidStatus = "VOIDED"
         payments.authorizeCalls = 0
+        payments.voided.clear()
     }
 
     // Helper: the sorted list of topics currently sitting in the outbox (the emitted event trail)
@@ -144,9 +152,10 @@ class OrderSagaTest {
         assertEquals(listOf(order.id.toString()), inventory.released, "the hold must be given back")
     }
 
-    // Verifies error-path: a hold that expired before confirm rejects with RESERVATION_EXPIRED
+    // Verifies error-path + compensation (Fase 2 #4, test 5.4): a hold that expired AFTER authorize must VOID the charge
+    // BEFORE rejecting with RESERVATION_EXPIRED — closing the saga invariant "no charge without a seat"
     @Test
-    fun `hold expired before confirm (slow payment) - order REJECTED(RESERVATION_EXPIRED)`() {
+    fun `hold expired after authorize - charge is VOIDED (compensation) then order REJECTED(RESERVATION_EXPIRED)`() {
         inventory.confirmStatus = "EXPIRED"
         val order = orderService.placeOrder("TRENO-TEST", 1)
 
@@ -154,6 +163,46 @@ class OrderSagaTest {
 
         val saved = orders.findById(order.id).orElseThrow()
         assertEquals(OrderStatus.REJECTED, saved.status)
+        assertEquals(RejectionReason.RESERVATION_EXPIRED, saved.reason)
+        assertEquals(listOf(order.id.toString()), payments.voided, "the charge must be voided before the reject")
+    }
+
+    // Verifies resilience (Fase 2 #4, Option B): if the VOID itself fails (Payments down / breaker open) the order must NOT
+    // go terminal with a live charge — it is PARKED so the recovery sweep retries the void; once the void succeeds it REJECTS
+    @Test
+    fun `void fails - order is PARKED (not rejected) then REJECTED(RESERVATION_EXPIRED) once the void succeeds`() {
+        inventory.confirmStatus = "EXPIRED"
+        payments.voidStatus = "UNAVAILABLE" // the storno cannot complete now
+        val order = orderService.placeOrder("TRENO-TEST", 1)
+
+        saga.handle(order.id)
+
+        val parked = orders.findById(order.id).orElseThrow()
+        assertEquals(OrderStatus.PAYMENT_PENDING, parked.status, "a failed void must park (retry), never leak a live charge")
+        assertEquals(null, parked.reason, "parking is not a rejection")
+        assertTrue(payments.voided.isNotEmpty(), "the void was attempted")
+
+        // Payments recovers; the recovery sweep re-drives the saga -> the void now succeeds
+        payments.voidStatus = "VOIDED"
+        saga.handle(order.id)
+
+        val rejected = orders.findById(order.id).orElseThrow()
+        assertEquals(OrderStatus.REJECTED, rejected.status)
+        assertEquals(RejectionReason.RESERVATION_EXPIRED, rejected.reason)
+        assertEquals(1, inventory.reserveCalls, "reserve is not repeated across the recovery")
+    }
+
+    // Verifies the crash-window branch (Fase 2 #4): if a prior pass voided the charge but crashed before the reject, the
+    // replayed authorize returns VOIDED — the saga must finish the rejection, NOT mis-park as an "unexpected status"
+    @Test
+    fun `authorize replays VOIDED (crash after void) - order REJECTED(RESERVATION_EXPIRED), never PARKED`() {
+        payments.status = "VOIDED" // a replayed authorize of an already-voided charge
+        val order = orderService.placeOrder("TRENO-TEST", 1)
+
+        saga.handle(order.id)
+
+        val saved = orders.findById(order.id).orElseThrow()
+        assertEquals(OrderStatus.REJECTED, saved.status, "a VOIDED replay must finish the rejection, not park")
         assertEquals(RejectionReason.RESERVATION_EXPIRED, saved.reason)
     }
 

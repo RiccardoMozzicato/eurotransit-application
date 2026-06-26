@@ -105,7 +105,7 @@ resilience4j:
           - org.springframework.web.client.HttpClientErrorException
           # Bulkhead saturation is a LOCAL concurrency cap, not a downstream fault: it must not by itself open the breaker (real slowness is already caught by the >2s slow-call rate). Fase 2 #2.
           - io.github.resilience4j.bulkhead.BulkheadFullException
-  # Retry (Fase 2 #2): absorbs a SINGLE transient transport fault inline before it reaches the breaker. Values are SLO-bounded (checkout e2e p95 <= 5s), deliberately shorter than the slide-22 example (1s/2s/4s): the prof's own rule is "derive retry/timeout from the end-to-end deadline" — the sustained-outage case is handled by breaker -> PAYMENT_PENDING -> recovery sweep, not by long inline waits. Only TRANSPORT faults are retried (never a 4xx / business outcome). TEAM policy decision (docs/design.md, decision 7).
+  # Retry (Fase 2 #2): absorbs up to TWO transient transport faults inline (max-attempts 3 = 1 call + 2 retries) before it reaches the breaker. Values are SLO-bounded (checkout e2e p95 <= 5s), deliberately shorter than the slide-22 example (1s/2s/4s): the prof's own rule is "derive retry/timeout from the end-to-end deadline" — the sustained-outage case is handled by breaker -> PAYMENT_PENDING -> recovery sweep, not by long inline waits. Only TRANSPORT faults are retried (never a 4xx / business outcome). TEAM policy decision (docs/design.md, decision 7).
   retry:
     instances:
       payments: &gatewayRetry

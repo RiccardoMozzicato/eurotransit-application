@@ -46,6 +46,7 @@ class OrderRecoverySweeper(
     private val orders: OrderRepository,
     private val saga: OrderSaga,
     private val stateMachine: OrderStateMachine,
+    private val payments: PaymentsGateway,
     private val meterRegistry: MeterRegistry,
     @Value("\${app.recovery.enabled}") private val enabled: Boolean,
     @Value("\${app.recovery.poll-interval}") private val pollInterval: Duration,
@@ -56,6 +57,9 @@ class OrderRecoverySweeper(
 
     // Outcome-tagged recovery counter (Pillar D, same idiom as InventoryService.outcomes): outcome = retried | expired
     private fun recovery(outcome: String) = meterRegistry.counter("orders_recovery_total", "outcome", outcome)
+
+    // Compensation counter, same series as OrderSaga (Fase 2 #4): incremented when the expiry path reverses a live charge
+    private fun compensations(type: String) = meterRegistry.counter("orders_compensations_total", "type", type)
 
     // starts the sweep loop once the app context is fully up (skips it entirely when disabled, e.g. in tests)
     @EventListener(ApplicationReadyEvent::class)
@@ -92,10 +96,32 @@ class OrderRecoverySweeper(
         for (order in parked) {
             try {
                 if (Duration.between(order.updatedAt, now) > maxPark) {
-                    // hold surely gone (seats already restocked by Inventory): give up money-safely WITHOUT charging
-                    log.warn("order {} parked beyond {} — REJECTED(RESERVATION_EXPIRED) without re-authorizing", order.id, maxPark)
-                    recovery("expired").increment()
-                    stateMachine.reject(order.id, RejectionReason.RESERVATION_EXPIRED)
+                    // Past max-park the hold is surely gone (seats restocked by Inventory). Before any terminal reject,
+                    // attempt an idempotent best-effort void (Fase 2 #4): a prior sweep may have re-authorized THEN crashed
+                    // before voiding, so a live charge may exist. void only reverses, never charges, so money-safety holds
+                    val voided = payments.void(order.id.toString())
+                    when (voided.status) {
+                        "VOIDED" -> {
+                            // a live charge was reversed -> safe to finish the rejection
+                            if (!voided.replayed) compensations("refund").increment()
+                            recovery("expired").increment()
+                            log.warn("order {} parked beyond {} — charge VOIDED, REJECTED(RESERVATION_EXPIRED)", order.id, maxPark)
+                            stateMachine.reject(order.id, RejectionReason.RESERVATION_EXPIRED)
+                        }
+                        "NOT_FOUND", "DECLINED" -> {
+                            // money state resolved: no charge ever existed -> reject money-safely WITHOUT re-authorizing
+                            recovery("expired").increment()
+                            log.warn("order {} parked beyond {} — no charge to reverse ({}), REJECTED(RESERVATION_EXPIRED)", order.id, maxPark, voided.status)
+                            stateMachine.reject(order.id, RejectionReason.RESERVATION_EXPIRED)
+                        }
+                        else -> {
+                            // UNAVAILABLE / FAILED: Payments unreachable -> we cannot confirm whether a charge is live, so do
+                            // NOT go terminal and abandon it. Keep the order PARKED and retry the void next sweep (Fase 2 #4,
+                            // Option B, team decision: money-safety over bounded retention). It drains once Payments recovers
+                            recovery("void_retry").increment()
+                            log.warn("order {} parked beyond {} but void was {} — keeping PARKED to retry the reversal (charge not abandoned)", order.id, maxPark, voided.status)
+                        }
+                    }
                 } else {
                     recovery("retried").increment()
                     saga.handle(order.id)
