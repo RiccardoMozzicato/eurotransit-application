@@ -92,7 +92,17 @@ Obiettivo: quando Payments è giù/lento, **contenere** il guasto (non propagarl
 
 ---
 
-## 2. Timeout + Retry (backoff + jitter) + Bulkhead
+## 2. Timeout + Retry (backoff + jitter) + Bulkhead — ✅ FATTO (2026-06-26)
+
+> **Stato: IMPLEMENTATO e testato** (27/27 test verdi nel servizio `orders`, +7 vs §1). Decorazione **programmatica**
+> (come §1) via un helper riusabile `GatewayResilience` che compone `Retry( CircuitBreaker( Bulkhead( call ) ) )` con i
+> `decorateCallable` per-modulo (il builder `Decorators` è in `resilience4j-all`, non a classpath → non usato).
+> **Retry** transport-only (max-attempts 3, 200ms exp×2+jitter; mai 4xx/business/breaker-open/bulkhead-full), valori
+> SLO-bounded (più corti dei letterali 1s/2s/4s della slide, giustificato dal budget e2e — vedi `design.md` dec.7).
+> **Bulkhead** semaforo separato payments(8)/inventory(16), fail-fast; `BulkheadFullException` ignorata dal breaker.
+> Scope = **entrambi i gateway** (breaker resta solo Payments). NB: il testo sotto (§2.2/§2.4) cita le **annotazioni**
+> `@Retry`/`@Bulkhead` — scelta **superata** dalla decorazione programmatica di §1 (rischio AOP non-weave su Boot 4).
+> Restano §3 (429) e §4 (refund/void).
 
 Obiettivo: ogni chiamata remota bounded, ritentata in modo sicuro, isolata per dominio di guasto.
 
