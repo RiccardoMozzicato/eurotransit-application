@@ -10,11 +10,11 @@ import org.springframework.stereotype.Component
 import java.util.concurrent.Callable
 
 /**
- * Single place where the Resilience4j policies are composed for an outbound gateway call (Pillar C, Fase 2 §2).
+ * Single place where the Resilience4j policies are composed for an outbound gateway call (Pillar C, Fase 2 #2).
  * Both [HttpPaymentsGateway] and [HttpInventoryGateway] route their HTTP calls through here so the composition
  * ORDER is defined exactly once (DRY) and cannot drift between gateways.
  *
- * Composition (the canonical Resilience4j order, deck 11 / plan §2.5):
+ * Composition (the canonical Resilience4j order, deck 11 / plan #2.5):
  *
  *     Retry( CircuitBreaker( Bulkhead( call ) ) )
  *
@@ -28,7 +28,7 @@ import java.util.concurrent.Callable
  *  - Retry outermost => every attempt is a data point for the breaker, so it opens faster under a sustained fault.
  *
  * Applied PROGRAMMATICALLY via the injected registries (NOT the `@Retry`/`@Bulkhead` annotations): same rationale as
- * the §1 breaker — the resilience4j-spring-boot3 starter's AOP aspect is not guaranteed to weave on Spring Boot 4
+ * the #1 breaker — the resilience4j-spring-boot3 starter's AOP aspect is not guaranteed to weave on Spring Boot 4
  * (docs/agent-log.md #2), whereas the registry beans are verified to bind (OrdersApplicationTests), so the
  * decoration is deterministic.
  */
@@ -39,7 +39,7 @@ class GatewayResilience(
     private val bulkheads: BulkheadRegistry,
 ) {
     /**
-     * Runs [block] decorated with bulkhead + circuit breaker + retry — for the money-path call to Payments (the §1
+     * Runs [block] decorated with bulkhead + circuit breaker + retry — for the money-path call to Payments (the #1
      * breaker). [instance] selects the Resilience4j instance ("payments") configured in application.yml.
      */
     fun <T> callWithBreaker(instance: String, block: () -> T): T = decorate(instance, useBreaker = true, block)

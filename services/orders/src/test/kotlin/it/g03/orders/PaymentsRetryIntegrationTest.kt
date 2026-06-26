@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 
 /**
- * END-TO-END proof of the Payments retry through the REAL gateway (Fase 2 §2): a stub Payments that returns 503 twice
+ * END-TO-END proof of the Payments retry through the REAL gateway (Fase 2 #2): a stub Payments that returns 503 twice
  * then 200 -> the retry absorbs the transient faults and the gateway returns AUTHORIZED (the saga never sees the blip).
  * A stub that is permanently 503 -> after the retries are exhausted the gateway maps it to the UNAVAILABLE fallback.
  * Reuses the JDK HttpServer stub pattern of PaymentsGateway4xxTest; the request counter proves the retry fired.

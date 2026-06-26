@@ -25,7 +25,7 @@ import java.time.Instant
  *
  * Money-safety (Pillar B/C): an order parked LONGER than the inventory hold TTL has had its seats restocked by
  * Inventory's reconciler, so re-authorizing it would CHARGE the card and then fail confirm (EXPIRED) with no refund
- * until §4. Such orders are rejected (RESERVATION_EXPIRED) WITHOUT re-authorizing. `app.recovery.max-park` MUST be
+ * until #4. Such orders are rejected (RESERVATION_EXPIRED) WITHOUT re-authorizing. `app.recovery.max-park` MUST be
  * <= the inventory hold TTL for this to hold. This also caps the otherwise-unbounded retry of a wedged order
  *
  * Async lifecycle (same shape as Inventory's ReservationReconciler):

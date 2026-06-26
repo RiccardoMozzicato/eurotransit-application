@@ -10,7 +10,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The bulkhead ISOLATION invariant (Fase 2 §2.4 DoD): saturating the Payments bulkhead must NOT consume the permits
+ * The bulkhead ISOLATION invariant (Fase 2 #2.4 DoD): saturating the Payments bulkhead must NOT consume the permits
  * Inventory needs — that isolation is the whole point of SEPARATE semaphore instances (deck 11 slide 20). Permits are
  * driven directly (semaphore permits are not thread-bound), so the proof is deterministic with no sleeping threads.
  */

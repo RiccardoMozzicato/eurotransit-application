@@ -81,10 +81,10 @@ class OrderSaga(
         // Stage 3 -> confirm the hold (guards the slow-payment-vs-TTL race, refinement #3): Inventory re-checks the hold is still valid; if it expired meanwhile we must NOT confirm a seat we no longer hold
         val confirmation = inventory.confirm(id, order.productId)
         if (confirmation.status != "CONFIRMED") {
-            // The hold lapsed before confirm. On a recovery re-run payments.authorize already CHARGED on this pass, so until §4 (refund/void) lands this is a money leak — make it OBSERVABLE (deck 10). [OrderRecoverySweeper] additionally bounds re-authorization by park age, rejecting a clearly-expired hold BEFORE charging, so this branch stays rare (only the sub-second authorize→confirm window)
-            // TODO §4: compensate the charge (refund/void on Payments) — tracked in docs/design.md
+            // The hold lapsed before confirm. On a recovery re-run payments.authorize already CHARGED on this pass, so until #4 (refund/void) lands this is a money leak — make it OBSERVABLE (deck 10). [OrderRecoverySweeper] additionally bounds re-authorization by park age, rejecting a clearly-expired hold BEFORE charging, so this branch stays rare (only the sub-second authorize→confirm window)
+            // TODO #4: compensate the charge (refund/void on Payments) — tracked in docs/design.md
             meterRegistry.counter("orders_charge_without_refund_total").increment()
-            log.warn("order {} confirm returned {} after authorize — REJECTED(RESERVATION_EXPIRED); refund pending §4", id, confirmation.status)
+            log.warn("order {} confirm returned {} after authorize — REJECTED(RESERVATION_EXPIRED); refund pending #4", id, confirmation.status)
             stateMachine.reject(orderId, RejectionReason.RESERVATION_EXPIRED)
             return
         }

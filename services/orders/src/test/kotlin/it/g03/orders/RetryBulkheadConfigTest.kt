@@ -13,7 +13,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Pins the Fase 2 §2 Retry + Bulkhead instances to application.yml (NOT Resilience4j defaults), exactly as
+ * Pins the Fase 2 #2 Retry + Bulkhead instances to application.yml (NOT Resilience4j defaults), exactly as
  * PaymentsCircuitBreakerTest pins the breaker. Every assertion is on a NON-default value, so a green test proves the
  * yml binding actually engaged (asserting a value that equals the default would prove nothing).
  */

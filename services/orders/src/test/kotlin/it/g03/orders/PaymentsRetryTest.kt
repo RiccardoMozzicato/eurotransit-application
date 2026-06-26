@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 /**
- * FUNCTIONAL proof of the Payments retry (Fase 2 §2): a transient 5xx is retried up to max-attempts and then succeeds;
+ * FUNCTIONAL proof of the Payments retry (Fase 2 #2): a transient 5xx is retried up to max-attempts and then succeeds;
  * a permanent 4xx is NOT retried (it is not in retry-exceptions). Drives the configured `payments` retry instance
  * directly so the test is deterministic. Mirrors PaymentsCircuitBreakerTest's "drive the policy, don't mock it" style.
  */

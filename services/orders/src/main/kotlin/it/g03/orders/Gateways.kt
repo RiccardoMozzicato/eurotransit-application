@@ -16,7 +16,7 @@ import java.util.UUID
 
 /*
  * Synchronous gateways to the sibling services ("a decision must be made NOW" -> these calls happen INSIDE the async pipeline, see docs/design.md). They are interfaces so the saga is testable with fakes; the HTTP implementations carry connect/read TIMEOUTS on every call (Pillar C: no unbounded waits).
- * Both HTTP implementations route every remote call through [GatewayResilience] (Fase 2 §1+§2): bulkhead + retry(backoff+jitter) on both, plus the circuit breaker on Payments.
+ * Both HTTP implementations route every remote call through [GatewayResilience] (Fase 2 #1+#2): bulkhead + retry(backoff+jitter) on both, plus the circuit breaker on Payments.
  */
 
 // Mirror of Inventory's response statuses (as always, strings to avoid duplicating the enum)
@@ -64,7 +64,7 @@ class HttpInventoryGateway(
     // in-cluster the env var points at the Service DNS (http://inventory:8080)
     // the localhost default is for local multi-process dev
     @Value("\${app.inventory-base-url}") baseUrl: String,
-    // bulkhead + retry only (NO breaker): Inventory is the contended resource, not a money-path coordinator. reserve/confirm/release are idempotent (UNIQUE(order_id, product_id), design #6), so a retry of a transient transport fault is safe. After the retries are exhausted the exception still propagates (as before §2) -> Kafka redelivery / the recovery sweeper's per-order catch.
+    // bulkhead + retry only (NO breaker): Inventory is the contended resource, not a money-path coordinator. reserve/confirm/release are idempotent (UNIQUE(order_id, product_id), design #6), so a retry of a transient transport fault is safe. After the retries are exhausted the exception still propagates (as before #2) -> Kafka redelivery / the recovery sweeper's per-order catch.
     private val resilience: GatewayResilience,
 ) : InventoryGateway {
 

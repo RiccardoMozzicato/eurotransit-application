@@ -73,6 +73,9 @@ management:
     # The circuit breaker must NEVER influence health/readiness: an OPEN breaker is the system WORKING (shedding load on a failing downstream), not failing. Keep the probes independent of downstream state (Pillar C, deck 11 slide 13-14)
     circuitbreakers:
       enabled: false
+    # Same rationale for the intake rate limiter (Fase 2 #3): shedding excess load is the system WORKING (controlled refusal), not failing. A saturated limiter must NOT flip readiness
+    ratelimiters:
+      enabled: false
   tracing:
     sampling:
       probability: 1.0
@@ -100,9 +103,9 @@ resilience4j:
         automatic-transition-from-open-to-half-open-enabled: true
         ignore-exceptions:
           - org.springframework.web.client.HttpClientErrorException
-          # Bulkhead saturation is a LOCAL concurrency cap, not a downstream fault: it must not by itself open the breaker (real slowness is already caught by the >2s slow-call rate). Fase 2 §2.
+          # Bulkhead saturation is a LOCAL concurrency cap, not a downstream fault: it must not by itself open the breaker (real slowness is already caught by the >2s slow-call rate). Fase 2 #2.
           - io.github.resilience4j.bulkhead.BulkheadFullException
-  # Retry (Fase 2 §2): absorbs a SINGLE transient transport fault inline before it reaches the breaker. Values are SLO-bounded (checkout e2e p95 <= 5s), deliberately shorter than the slide-22 example (1s/2s/4s): the prof's own rule is "derive retry/timeout from the end-to-end deadline" — the sustained-outage case is handled by breaker -> PAYMENT_PENDING -> recovery sweep, not by long inline waits. Only TRANSPORT faults are retried (never a 4xx / business outcome). TEAM policy decision (docs/design.md, decision 7).
+  # Retry (Fase 2 #2): absorbs a SINGLE transient transport fault inline before it reaches the breaker. Values are SLO-bounded (checkout e2e p95 <= 5s), deliberately shorter than the slide-22 example (1s/2s/4s): the prof's own rule is "derive retry/timeout from the end-to-end deadline" — the sustained-outage case is handled by breaker -> PAYMENT_PENDING -> recovery sweep, not by long inline waits. Only TRANSPORT faults are retried (never a 4xx / business outcome). TEAM policy decision (docs/design.md, decision 7).
   retry:
     instances:
       payments: &gatewayRetry
@@ -115,7 +118,7 @@ resilience4j:
           - org.springframework.web.client.HttpServerErrorException   # 5xx
           - org.springframework.web.client.ResourceAccessException    # connect/read timeout, connection refused
       inventory: *gatewayRetry                  # reserve/confirm/release are idempotent (UNIQUE(order_id, product_id)) -> retry-safe
-  # Bulkhead (Fase 2 §2): SEMAPHORE (sufficient for synchronous blocking calls). SEPARATE instances per dependency are the isolation: a slow Payments exhausts only the payments permits, never the ones Inventory needs (deck 11 slide 20). Fail-fast when full (no queue, slide 7). Sizes are a TEAM policy decision, tunable.
+  # Bulkhead (Fase 2 #2): SEMAPHORE (sufficient for synchronous blocking calls). SEPARATE instances per dependency are the isolation: a slow Payments exhausts only the payments permits, never the ones Inventory needs (deck 11 slide 20). Fail-fast when full (no queue, slide 7). Sizes are a TEAM policy decision, tunable.
   bulkhead:
     instances:
       payments:
@@ -124,3 +127,13 @@ resilience4j:
       inventory:
         max-concurrent-calls: 16
         max-wait-duration: PT0S
+  # Backpressure / load shedding at the synchronous intake. The public POST /api/orders is rate-limited; once the per-window budget is exhausted the request is REFUSED IMMEDIATELY with HTTP 429 + Retry-After (see OrdersIntakeRateLimiter + OrdersController), instead of being queued until the system collapses.
+  # Applied PROGRAMMATICALLY via RateLimiterRegistry
+  # NB: the limit is on the EDGE only: internal saga calls are governed by breaker/bulkhead, never a 429 (#3.5).
+  # The threshold is a TEAM policy decision, tunable from a load-test baseline
+  ratelimiter:
+    instances:
+      orders-intake:
+        limit-for-period: 20      # max accepted POST /api/orders per refresh window (demo value, tunable)
+        limit-refresh-period: PT1S    # the window -> ~20 accepted req/s sustained
+        timeout-duration: PT0S    # controlled refusal: NEVER block/queue waiting for a permit -> shed immediately
