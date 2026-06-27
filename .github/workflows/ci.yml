@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: lab02g03registry.azurecr.io
+  REGISTRY: labg03clusterregistry.azurecr.io
   IMAGE_PREFIX: eurotransit
 
 permissions:
