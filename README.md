@@ -7,7 +7,7 @@
 | [**eurotransit-application**](https://github.com/RiccardoMozzicato/eurotransit-application) | **this repo** — service code, tests, CI pipeline, frontend |
 | [**eurotransit-platform**](https://github.com/RiccardoMozzicato/eurotransit-platform) | GitOps desired state: Helm chart, platform operators, SLOs, chaos experiments, docs |
 
-Capstone team project (group g03) by Dario Berti · Federico Ferrari · Mattia Domizio · Riccardo Mozzicato · Emanuele Romano.
+Capstone team project (group g03) for the **Cloud Programming and Operations** course at Politecnico di Torino, by Dario Berti · Federico Ferrari · Mattia Domizio · Riccardo Mozzicato · Emanuele Romano.
 
 **Stack:** Kotlin · Spring Boot · Apache Kafka · Debezium CDC · PostgreSQL (CloudNativePG) · Keycloak ·
 React + TypeScript · Testcontainers · GitHub Actions · Azure Container Registry
