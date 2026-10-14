@@ -1,4 +1,32 @@
-# EuroTransit Marketplace — Application repository (g03)
+# EuroTransit Marketplace — Application
+
+**A cloud-native train-ticket marketplace, built to prove operational behaviour under partial failure.**
+
+| Repository | Role |
+|---|---|
+| [**eurotransit-application**](https://github.com/RiccardoMozzicato/eurotransit-application) | **this repo** — service code, tests, CI pipeline, frontend |
+| [**eurotransit-platform**](https://github.com/RiccardoMozzicato/eurotransit-platform) | GitOps desired state: Helm chart, platform operators, SLOs, chaos experiments, docs |
+
+Capstone team project (group g03) by Dario Berti · Federico Ferrari · Mattia Domizio · Riccardo Mozzicato · Emanuele Romano.
+
+**Stack:** Kotlin · Spring Boot · Apache Kafka · Debezium CDC · PostgreSQL (CloudNativePG) · Keycloak ·
+React + TypeScript · Testcontainers · GitHub Actions · Azure Container Registry
+
+### Highlights
+
+- **Event-driven microservices** — six Kotlin/Spring Boot services; the booking money path is an orchestrated
+  **Kafka command/reply saga** with a **transactional outbox drained by Debezium CDC**.
+- **Consistency under contention** — never-oversell seat inventory via atomic conditional updates, idempotent
+  handlers, and synchronous PostgreSQL replication (RPO = 0) on the critical database.
+- **GitOps on Azure AKS** — CI pushes immutable SHA-tagged images and bumps tags in Git; **Argo CD** reconciles
+  the cluster, and CI never holds cluster credentials.
+- **Progressive delivery** — SLO-gated **canary** with automatic abort and **blue/green** via Argo Rollouts.
+- **Observability & SRE** — SLOs with multi-window burn-rate alerts, Prometheus/Grafana dashboards, distributed
+  tracing across the Kafka/CDC hop.
+- **Chaos engineering** — eight Chaos Mesh experiments (pod/node kill, DB failover, Kafka partition, poison
+  messages), each with hypothesis and verdict, executed against the live AKS cluster.
+
+---
 
 Source for the cooperating services, their tests, the CI workflow and the `justfile`. This is the
 **application** half of a two-repository GitOps model; the **configuration** repository
@@ -434,10 +462,7 @@ the SPA mints a stable client-owned `Idempotency-Key` per checkout intent. See `
 ## 15. References
 
 - Infra / GitOps / observability / progressive delivery, and the four-pillar infrastructure design:
-  `../eurotransit-platform/README.md`.
-- Phase-by-phase progress and how the team split the work:
-  `../eurotransit-platform/docs/traccia/FASI_PROGETTO.md`.
-- Graded record of caught agent mistakes: `../eurotransit-platform/docs/agent-log.md`.
+  [eurotransit-platform README](https://github.com/RiccardoMozzicato/eurotransit-platform#readme).
+- How the team split the work: [docs/roles.md](https://github.com/RiccardoMozzicato/eurotransit-platform/blob/main/docs/roles.md).
+- Graded record of caught agent mistakes: [docs/agent-log.md](https://github.com/RiccardoMozzicato/eurotransit-platform/blob/main/docs/agent-log.md).
 - Per-service domain detail: each `services/<svc>/CLAUDE.md`.
-</content>
-</invoke>
