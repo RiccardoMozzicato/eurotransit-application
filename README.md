@@ -2,7 +2,7 @@
 
 Source for the cooperating services, their tests, the CI workflow and the `justfile`. This is the
 **application** half of a two-repository GitOps model; the **configuration** repository
-(`capstone-configuration-g03`) holds the Helm charts, platform bootstrap, Argo CD `Application`s,
+(`eurotransit-platform`) holds the Helm charts, platform bootstrap, Argo CD `Application`s,
 SLO/alert definitions and the team's graded `docs/`.
 
 > CI here builds and tests images, pushes **immutable** images (tagged with the commit SHA) to ACR, and
@@ -434,10 +434,10 @@ the SPA mints a stable client-owned `Idempotency-Key` per checkout intent. See `
 ## 15. References
 
 - Infra / GitOps / observability / progressive delivery, and the four-pillar infrastructure design:
-  `../capstone-configuration-g03/README.md`.
+  `../eurotransit-platform/README.md`.
 - Phase-by-phase progress and how the team split the work:
-  `../capstone-configuration-g03/docs/traccia/FASI_PROGETTO.md`.
-- Graded record of caught agent mistakes: `../capstone-configuration-g03/docs/agent-log.md`.
+  `../eurotransit-platform/docs/traccia/FASI_PROGETTO.md`.
+- Graded record of caught agent mistakes: `../eurotransit-platform/docs/agent-log.md`.
 - Per-service domain detail: each `services/<svc>/CLAUDE.md`.
 </content>
 </invoke>
